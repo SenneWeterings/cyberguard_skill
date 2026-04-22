@@ -1,0 +1,268 @@
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using ILGPU;
+using ILGPU.Runtime;
+using ILGPU.Runtime.Cuda;
+
+class Program
+{
+    static string CHARSET = "abcdefghijklmnopqrstuvwxyz";
+    static int MAX_LENGTH = 6;
+
+    static long attempts = 0;
+    static volatile bool found = false;
+    static string lastGuess = "";
+    static CancellationTokenSource cts = new();
+
+
+    static void Kernel(
+        Index1D      index,
+        ArrayView<byte>  charset,
+        ArrayView<byte>  password,
+        ArrayView<int>   foundFlag,
+        ArrayView<long>  result,
+        ArrayView<long>  powers,     // precomputed baseLen^0..baseLen^5
+        int  baseLen,
+        int  length,
+        long offset)
+    {
+        long globalIdx = index + offset;
+
+        // Decode all 6 character slots unconditionally (no branch per slot).
+        // Unused slots just decode to charset[0] — harmless, no branch needed.
+        byte c0 = charset[(int)(globalIdx                   % baseLen)];
+        byte c1 = charset[(int)(globalIdx / powers[1] % baseLen)];
+        byte c2 = charset[(int)(globalIdx / powers[2] % baseLen)];
+        byte c3 = charset[(int)(globalIdx / powers[3] % baseLen)];
+        byte c4 = charset[(int)(globalIdx / powers[4] % baseLen)];
+        byte c5 = charset[(int)(globalIdx / powers[5] % baseLen)];
+
+        // Fail-fast: check the LAST character first (cycles slowest → most
+        // candidates fail here → fewest threads reach the inner checks).
+        if (length > 5 && c5 != password[5]) return;
+        if (length > 4 && c4 != password[4]) return;
+        if (length > 3 && c3 != password[3]) return;
+        if (length > 2 && c2 != password[2]) return;
+        if (length > 1 && c1 != password[1]) return;
+        if (             c0 != password[0]) return;
+
+        Atomic.Exchange(ref foundFlag[0], 1);
+        result[0] = globalIdx;
+    }
+
+    static void Monitor(long total, Stopwatch sw, CancellationToken token)
+    {
+        while (!found && !token.IsCancellationRequested)
+        {
+            Thread.Sleep(200);
+            long     current  = Interlocked.Read(ref attempts);
+            double   elapsed  = sw.Elapsed.TotalSeconds;
+            long     speed    = elapsed > 0 ? (long)(current / elapsed) : 0;
+            double   progress = (double)current / total * 100;
+            double   eta      = speed > 0 ? (total - current) / (double)speed : 0;
+            TimeSpan etaT     = TimeSpan.FromSeconds(eta);
+            Console.Write(
+                $"\r[{progress,6:F2}%] {current:N0} tries | {speed:N0}/s | ETA: {etaT.Minutes:D2}:{etaT.Seconds:D2} | Last: {lastGuess,-20}"
+            );
+        }
+    }
+
+    static void Main()
+    {
+        Console.CancelKeyPress += (s, e) =>
+        {
+            Console.WriteLine("\nStopping...");
+            cts.Cancel();
+            e.Cancel = true;
+        };
+
+        Console.WriteLine("Select charset mode:");
+        Console.WriteLine("1. Lowercase");
+        Console.WriteLine("2. Lower + Upper");
+        Console.WriteLine("3. Lower + Upper + Numbers");
+        Console.WriteLine("4. All symbols");
+        Console.Write("Choice: ");
+        switch (Console.ReadLine())
+        {
+            case "2": CHARSET += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; break;
+            case "3": CHARSET += "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; break;
+            case "4": CHARSET += "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{};:,.<>?"; break;
+        }
+
+        Console.Write($"\nEnter password (max {MAX_LENGTH}): ");
+        string passwordStr = Console.ReadLine() ?? "";
+        if (passwordStr.Length > MAX_LENGTH) { Console.WriteLine("Too long."); return; }
+
+        byte[] charsetBytes  = CHARSET.Select(c => (byte)c).ToArray();
+        byte[] passwordBytes = passwordStr.Select(c => (byte)c).ToArray();
+        int    baseLen       = charsetBytes.Length;
+
+        // Precompute baseLen^0 .. baseLen^5 on the CPU, upload once
+        long[] powersHost = new long[6];
+        powersHost[0] = 1;
+        for (int i = 1; i < 6; i++) powersHost[i] = powersHost[i - 1] * baseLen;
+
+
+        const int BATCH            = 200_000_000;
+        const int THREADS_PER_BLOCK = 256;          // <-- tune this: try 128 vs 256
+
+        using var context = Context.CreateDefault();
+        Accelerator accel = null;
+        try
+        {
+            var cuda = context.Devices.OfType<CudaDevice>().FirstOrDefault();
+            if (cuda != null) accel = cuda.CreateAccelerator(context);
+        }
+        catch { }
+        if (accel == null)
+        {
+            Console.WriteLine("CUDA not found. Using CPU fallback.");
+            accel = context.GetPreferredDevice(preferCPU: true).CreateAccelerator(context);
+        }
+
+        using (accel)
+        {
+            long combinations = (long)Math.Pow(charsetBytes.Length, passwordBytes.Length);
+            Console.WriteLine($"\nCharset : {charsetBytes.Length} characters");
+            Console.WriteLine($"Length  : {passwordBytes.Length} characters");
+            Console.WriteLine($"Total   : {combinations:N0} possible combinations");
+
+            // OPTIMISATION 4: LoadStreamKernel with explicit group size instead of
+            // LoadAutoGroupedStreamKernel. AutoGrouped picks a size that maximises
+            // theoretical occupancy, but the actual best size depends on register
+            // pressure and shared-memory usage — manual tuning often wins 5–15%.
+            var kernelMethod = typeof(Program).GetMethod(
+                nameof(Kernel),
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+
+            var loadedKernel = accel.LoadStreamKernel<
+                Index1D, ArrayView<byte>, ArrayView<byte>,
+                ArrayView<int>, ArrayView<long>, ArrayView<long>,
+                int, int, long>(Kernel);
+
+            using var dCharset  = accel.Allocate1D<byte>(charsetBytes.Length);
+            using var dPassword = accel.Allocate1D<byte>(passwordBytes.Length);
+            using var dPowers   = accel.Allocate1D<long>(6);
+            dCharset.CopyFromCPU(charsetBytes);
+            dPassword.CopyFromCPU(passwordBytes);
+            dPowers.CopyFromCPU(powersHost);
+
+            // Double-buffering: A and B alternate so GPU never idles
+            using var dFoundA  = accel.Allocate1D<int>(1);
+            using var dResultA = accel.Allocate1D<long>(1);
+            using var dFoundB  = accel.Allocate1D<int>(1);
+            using var dResultB = accel.Allocate1D<long>(1);
+            int[]  hFoundA = new int[1];  long[] hResA = new long[1];
+            int[]  hFoundB = new int[1];  long[] hResB = new long[1];
+
+            dFoundA.MemSetToZero(); dResultA.MemSetToZero();
+            dFoundB.MemSetToZero(); dResultB.MemSetToZero();
+
+            long total = combinations;
+            var  sw    = Stopwatch.StartNew();
+            Task.Run(() => Monitor(total, sw, cts.Token));
+
+            // Helper: launch kernel with explicit group size
+            void Launch(int size, MemoryBuffer1D<int, Stride1D.Dense> dF,
+                                  MemoryBuffer1D<long, Stride1D.Dense> dR, long off)
+            {
+                int groups = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+                var cfg    = new KernelConfig(groups, THREADS_PER_BLOCK);
+                loadedKernel(cfg, size,
+                    dCharset.View, dPassword.View, dF.View, dR.View, dPowers.View,
+                    baseLen, passwordBytes.Length, off);
+            }
+
+            // Kick off batch 0 into buffer A before the loop
+            int firstSize = (int)Math.Min(BATCH, total);
+            Launch(firstSize, dFoundA, dResultA, 0L);
+
+            bool useA   = false;  // next write target
+            long offset = BATCH;
+
+            while (!found && !cts.IsCancellationRequested)
+            {
+                var dFoundCurr  = useA ? dFoundA  : dFoundB;
+                var dResultCurr = useA ? dResultA : dResultB;
+                var dFoundPrev  = useA ? dFoundB  : dFoundA;
+                var dResultPrev = useA ? dResultB : dResultA;
+                int[]  hFP      = useA ? hFoundB  : hFoundA;
+                long[] hRP      = useA ? hResB    : hResA;
+
+                bool hasMore = offset < total && !found;
+                int  size    = hasMore ? (int)Math.Min(BATCH, total - offset) : 0;
+
+                if (hasMore)
+                {
+                    dFoundCurr.MemSetToZero();
+                    dResultCurr.MemSetToZero();
+                    Launch(size, dFoundCurr, dResultCurr, offset);
+                }
+
+                // Synchronize waits for PREVIOUS kernel — current is already running
+                accel.Synchronize();
+
+                dFoundPrev.CopyToCPU(hFP);
+                if (hFP[0] == 1)
+                {
+                    dResultPrev.CopyToCPU(hRP);
+                    long idx = hRP[0];
+                    char[] guess = new char[passwordBytes.Length];
+                    long   tmp   = idx;
+                    for (int i = 0; i < guess.Length; i++)
+                    { guess[i] = (char)charsetBytes[tmp % baseLen]; tmp /= baseLen; }
+                    lastGuess = new string(guess);
+                    Console.WriteLine($"\n\nPassword cracked: {lastGuess}");
+                    found = true;
+                    break;
+                }
+
+                long prevSize = offset == BATCH ? firstSize : Math.Min(BATCH, total - (offset - BATCH));
+                Interlocked.Add(ref attempts, prevSize);
+                lastGuess = $"batch @ {offset - BATCH:N0}";
+
+                if (!hasMore) break;
+                offset += BATCH;
+                useA = !useA;
+            }
+
+            // Drain final in-flight batch
+            if (!found)
+            {
+                accel.Synchronize();
+                var dFL = useA ? dFoundB  : dFoundA;
+                var dRL = useA ? dResultB : dResultA;
+                int[]  hFL = new int[1]; long[] hRL = new long[1];
+                dFL.CopyToCPU(hFL);
+                if (hFL[0] == 1)
+                {
+                    dRL.CopyToCPU(hRL);
+                    long idx = hRL[0]; char[] guess = new char[passwordBytes.Length]; long tmp = idx;
+                    for (int i = 0; i < guess.Length; i++)
+                    { guess[i] = (char)charsetBytes[tmp % baseLen]; tmp /= baseLen; }
+                    lastGuess = new string(guess);
+                    Console.WriteLine($"\n\nPassword cracked: {lastGuess}");
+                    found = true;
+                }
+            }
+
+            sw.Stop();
+            found = true;
+            Console.WriteLine($"\nTime: {sw.Elapsed.TotalSeconds:F2}s | Attempts: {attempts:N0}");
+        }
+    }
+}
+
+// dotnet run -c Release
+//
+// Tune these two constants and note your speed each time:
+//   BATCH             200_000_000   300_000_000   400_000_000
+//   THREADS_PER_BLOCK 128           256
+// Keep the combo that gives the highest "/s" readout.
+
+
+// dotnet run
+// dotnet run -c Release

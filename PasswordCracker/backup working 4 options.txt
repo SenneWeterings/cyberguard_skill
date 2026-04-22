@@ -1,0 +1,674 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using ILGPU;
+using ILGPU.Runtime;
+using ILGPU.Runtime.Cuda;
+
+class Program
+{
+    static string CHARSET    = "abcdefghijklmnopqrstuvwxyz";
+    static int    MAX_LENGTH = 6;
+
+    static readonly string SPECIALS = "!@#$%^&*()-_=+[]{};:,.<>?";
+
+    static long            attempts  = 0;
+    static volatile bool   found     = false;
+    static string          lastGuess = "";
+    static CancellationTokenSource cts = new();
+
+    // ── 1. Define the Arguments Struct for the Constrained Kernel ─────────
+    public struct ConstrainedArgs
+    {
+        public ArrayView<byte> GroupData;
+        public ArrayView<int>  GroupSizes;
+        public ArrayView<int>  GroupOffsets;
+        public ArrayView<byte> Password;
+        public ArrayView<int>  FoundFlag;
+        public ArrayView<long> Result;
+        public ArrayView<long> SegOffsets;
+        public ArrayView<int>  SegN0;
+        public ArrayView<int>  SegN1;
+        public ArrayView<int>  SegN2;
+        public ArrayView<long> SegGroupSizes;
+        public ArrayView<long> SegPerms;
+        public ArrayView<long> SegPermPowers0;
+        public ArrayView<long> SegPermPowers1;
+        public ArrayView<long> SegPermPowers2;
+        public int NumSegs;
+        public int Length;
+        public long Offset;
+    }
+
+    static void KernelStandard(
+        Index1D         index,
+        ArrayView<byte> charset,
+        ArrayView<byte> password,
+        ArrayView<int>  foundFlag,
+        ArrayView<long> result,
+        ArrayView<long> powers,
+        int  baseLen,
+        int  length,
+        long offset)
+    {
+        long globalIdx = index + offset;
+
+        byte c0 = charset[(int)(globalIdx                  % baseLen)];
+        byte c1 = charset[(int)(globalIdx / powers[1] % baseLen)];
+        byte c2 = charset[(int)(globalIdx / powers[2] % baseLen)];
+        byte c3 = charset[(int)(globalIdx / powers[3] % baseLen)];
+        byte c4 = charset[(int)(globalIdx / powers[4] % baseLen)];
+        byte c5 = charset[(int)(globalIdx / powers[5] % baseLen)];
+
+        if (length > 5 && c5 != password[5]) return;
+        if (length > 4 && c4 != password[4]) return;
+        if (length > 3 && c3 != password[3]) return;
+        if (length > 2 && c2 != password[2]) return;
+        if (length > 1 && c1 != password[1]) return;
+        if (             c0 != password[0]) return;
+
+        Atomic.Exchange(ref foundFlag[0], 1);
+        result[0] = globalIdx;
+    }
+
+
+    static void KernelConstrained(Index1D index, ConstrainedArgs args)
+    {
+        long globalIdx = index + args.Offset;
+
+        // ── Unpack the struct ────────────────────────────────────────────────
+        var segOffsets = args.SegOffsets;
+        var segN0 = args.SegN0;
+        var segN1 = args.SegN1;
+        var segN2 = args.SegN2;
+        var segPermPowers0 = args.SegPermPowers0;
+        var segPermPowers1 = args.SegPermPowers1;
+        var segPermPowers2 = args.SegPermPowers2;
+        var segPerms = args.SegPerms;
+        var groupSizes = args.GroupSizes;
+        var groupOffsets = args.GroupOffsets;
+        var groupData = args.GroupData;
+        var password = args.Password;
+        var foundFlag = args.FoundFlag;
+        var result = args.Result;
+        int numSegs = args.NumSegs;
+        int length = args.Length;
+
+        // ── 1. Find segment via binary search ────────────────────────────────
+        int lo = 0, hi = numSegs - 1, seg = 0;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (segOffsets[mid] <= globalIdx) { seg = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+
+        long localIdx = globalIdx - segOffsets[seg];
+        int  n0 = segN0[seg], n1 = segN1[seg], n2 = segN2[seg];
+        long pp0 = segPermPowers0[seg];
+        long pp1 = segPermPowers1[seg];
+        long pp2 = segPermPowers2[seg];
+        // long perms = segPerms[seg]; // Unused but kept for structure
+
+        // ── 2. Decode which permutation (slot assignment) we're in ───────────
+        long charBlock = pp0 * pp1 * pp2;
+        long permIdx   = localIdx / charBlock;
+        long charIdx   = localIdx % charBlock;
+
+        // ── 3. Decode character indices within each group ────────────────────
+        long ci0 = charIdx / (pp1 * pp2);
+        long ci1 = (charIdx / pp2) % pp1;
+        long ci2 = charIdx % pp2;
+
+        // ── 4. Map ci0..ci2 to actual characters ─────────────────────────────
+        int gs0 = groupSizes[0], go0 = groupOffsets[0];
+        int gs1 = groupSizes[1], go1 = groupOffsets[1];
+        int gs2 = groupSizes[2], go2 = groupOffsets[2];
+
+        // Fixed CS0219: Removed gXc11 which were never used
+        byte g0c0=0,g0c1=0,g0c2=0,g0c3=0,g0c4=0,g0c5=0,g0c6=0,g0c7=0,g0c8=0,g0c9=0,g0c10=0;
+        byte g1c0=0,g1c1=0,g1c2=0,g1c3=0,g1c4=0,g1c5=0,g1c6=0,g1c7=0,g1c8=0,g1c9=0,g1c10=0;
+        byte g2c0=0,g2c1=0,g2c2=0,g2c3=0,g2c4=0,g2c5=0,g2c6=0,g2c7=0,g2c8=0,g2c9=0,g2c10=0;
+
+        long tmp = ci0;
+        if (n0 > 0)  { g0c0  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 1)  { g0c1  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 2)  { g0c2  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 3)  { g0c3  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 4)  { g0c4  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 5)  { g0c5  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 6)  { g0c6  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 7)  { g0c7  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 8)  { g0c8  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 9)  { g0c9  = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+        if (n0 > 10) { g0c10 = groupData[go0 + (int)(tmp % gs0)]; tmp /= gs0; }
+
+        tmp = ci1;
+        if (n1 > 0)  { g1c0  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 1)  { g1c1  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 2)  { g1c2  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 3)  { g1c3  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 4)  { g1c4  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 5)  { g1c5  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 6)  { g1c6  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 7)  { g1c7  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 8)  { g1c8  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 9)  { g1c9  = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+        if (n1 > 10) { g1c10 = groupData[go1 + (int)(tmp % gs1)]; tmp /= gs1; }
+
+        tmp = ci2;
+        if (n2 > 0)  { g2c0  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 1)  { g2c1  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 2)  { g2c2  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 3)  { g2c3  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 4)  { g2c4  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 5)  { g2c5  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 6)  { g2c6  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 7)  { g2c7  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 8)  { g2c8  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 9)  { g2c9  = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+        if (n2 > 10) { g2c10 = groupData[go2 + (int)(tmp % gs2)]; tmp /= gs2; }
+
+        // ── 5. Decode permutation ─────────────────────────────────────────────
+        int rem0 = n0, rem1 = n1, rem2 = n2;
+        long pIdx = permIdx;
+
+        long Binom(int nn, int kk)
+        {
+            if (kk < 0 || kk > nn) return 0;
+            if (kk == 0 || kk == nn) return 1;
+            if (kk > nn - kk) kk = nn - kk;
+            long r = 1;
+            for (int x = 0; x < kk; x++) { r = r * (nn - x) / (x + 1); }
+            return r;
+        }
+
+        byte s0=0,s1=0,s2=0,s3=0,s4=0,s5=0,s6=0,s7=0,s8=0,s9=0,s10=0,s11=0;
+
+        for (int slot = 0; slot < length; slot++)
+        {
+            int remTotal = (length - slot - 1);
+            long c0perms = rem0 > 0 ? Binom(remTotal, rem0 - 1) * Binom(remTotal - (rem0-1), rem1) : 0;
+            long c1perms = rem1 > 0 ? Binom(remTotal, rem0)     * Binom(remTotal - rem0,      rem1 - 1) : 0;
+
+            int chosenGroup;
+            if (pIdx < c0perms)                   { chosenGroup = 0; rem0--; }
+            else if (pIdx < c0perms + c1perms)    { chosenGroup = 1; pIdx -= c0perms; rem1--; }
+            else                                  { chosenGroup = 2; pIdx -= c0perms + c1perms; rem2--; }
+
+            byte ch = 0;
+            if (chosenGroup == 0)
+            {
+                int used0 = n0 - rem0 - 1;
+                ch = used0 == 0  ? g0c0  : used0 == 1  ? g0c1  : used0 == 2  ? g0c2  :
+                     used0 == 3  ? g0c3  : used0 == 4  ? g0c4  : used0 == 5  ? g0c5  :
+                     used0 == 6  ? g0c6  : used0 == 7  ? g0c7  : used0 == 8  ? g0c8  :
+                     used0 == 9  ? g0c9  : g0c10;
+            }
+            else if (chosenGroup == 1)
+            {
+                int used1 = n1 - rem1 - 1;
+                ch = used1 == 0  ? g1c0  : used1 == 1  ? g1c1  : used1 == 2  ? g1c2  :
+                     used1 == 3  ? g1c3  : used1 == 4  ? g1c4  : used1 == 5  ? g1c5  :
+                     used1 == 6  ? g1c6  : used1 == 7  ? g1c7  : used1 == 8  ? g1c8  :
+                     used1 == 9  ? g1c9  : g1c10;
+            }
+            else
+            {
+                int used2 = n2 - rem2 - 1;
+                ch = used2 == 0  ? g2c0  : used2 == 1  ? g2c1  : used2 == 2  ? g2c2  :
+                     used2 == 3  ? g2c3  : used2 == 4  ? g2c4  : used2 == 5  ? g2c5  :
+                     used2 == 6  ? g2c6  : used2 == 7  ? g2c7  : used2 == 8  ? g2c8  :
+                     used2 == 9  ? g2c9  : g2c10;
+            }
+
+            if      (slot == 0)  s0  = ch;
+            else if (slot == 1)  s1  = ch;
+            else if (slot == 2)  s2  = ch;
+            else if (slot == 3)  s3  = ch;
+            else if (slot == 4)  s4  = ch;
+            else if (slot == 5)  s5  = ch;
+            else if (slot == 6)  s6  = ch;
+            else if (slot == 7)  s7  = ch;
+            else if (slot == 8)  s8  = ch;
+            else if (slot == 9)  s9  = ch;
+            else if (slot == 10) s10 = ch;
+            else                 s11 = ch;
+        }
+
+        // ── 6. Compare against target password ───────────────────────────────
+        if (length > 11 && s11 != password[11]) return;
+        if (length > 10 && s10 != password[10]) return;
+        if (length > 9  && s9  != password[9])  return;
+        if (length > 8  && s8  != password[8])  return;
+        if (length > 7  && s7  != password[7])  return;
+        if (length > 6  && s6  != password[6])  return;
+        if (length > 5  && s5  != password[5])  return;
+        if (length > 4  && s4  != password[4])  return;
+        if (length > 3  && s3  != password[3])  return;
+        if (length > 2  && s2  != password[2])  return;
+        if (length > 1  && s1  != password[1])  return;
+        if (              s0  != password[0])  return;
+
+        Atomic.Exchange(ref foundFlag[0], 1);
+        result[0] = globalIdx;
+    }
+
+
+    // Multinomial coefficient: length! / (n0! * n1! * n2!)
+    static long Multinomial(int length, int n0, int n1, int n2)
+    {
+        long result = 1;
+        int[] chosen = { n0, n1, n2 };
+        int remaining = length;
+        foreach (int k in chosen)
+        {
+            for (int i = 0; i < k; i++)
+            {
+                result = result * remaining / (i + 1);
+                remaining--;
+            }
+        }
+        return result;
+    }
+
+    static long IntPow(long b, int e)
+    {
+        long r = 1; for (int i = 0; i < e; i++) r *= b; return r;
+    }
+
+    struct Segment { public int Len, N0, N1, N2; public long Size, Perms, PP0, PP1, PP2; }
+
+    static (List<Segment> segs, long total) BuildSegments(
+        int minLen, int maxLen, int gs0, int gs1, int gs2)
+    {
+        var segs = new List<Segment>();
+        for (int L = minLen; L <= maxLen; L++)
+            for (int n0 = 1; n0 <= L - 2; n0++)
+                for (int n1 = 1; n1 <= L - n0 - 1; n1++)
+                {
+                    int n2 = L - n0 - n1;
+                    if (n2 < 1) continue;
+                    long pp0   = IntPow(gs0, n0);
+                    long pp1   = IntPow(gs1, n1);
+                    long pp2   = IntPow(gs2, n2);
+                    long perms = Multinomial(L, n0, n1, n2);
+                    long size  = perms * pp0 * pp1 * pp2;
+                    segs.Add(new Segment { Len=L, N0=n0, N1=n1, N2=n2,
+                        Size=size, Perms=perms, PP0=pp0, PP1=pp1, PP2=pp2 });
+                }
+        long total = segs.Sum(s => s.Size);
+        return (segs, total);
+    }
+
+    static string DecodeConstrained(long globalIdx, List<Segment> segs, long[] segOffsets,
+        byte[] g0, byte[] g1, byte[] g2)
+    {
+        int seg = 0;
+        for (int i = segs.Count - 1; i >= 0; i--)
+            if (segOffsets[i] <= globalIdx) { seg = i; break; }
+
+        var s   = segs[seg];
+        long localIdx  = globalIdx - segOffsets[seg];
+        long charBlock = s.PP0 * s.PP1 * s.PP2;
+        long permIdx   = localIdx / charBlock;
+        long charIdx   = localIdx % charBlock;
+
+        var gc0 = new byte[s.N0]; long tmp = charIdx;
+        for (int i = 0; i < s.N0; i++) { gc0[i] = g0[tmp % g0.Length]; tmp /= g0.Length; }
+        var gc1 = new byte[s.N1];
+        for (int i = 0; i < s.N1; i++) { gc1[i] = g1[tmp % g1.Length]; tmp /= g1.Length; }
+        var gc2 = new byte[s.N2];
+        for (int i = 0; i < s.N2; i++) { gc2[i] = g2[tmp % g2.Length]; tmp /= g2.Length; }
+
+        var result = new byte[s.Len];
+        int r0 = s.N0, r1 = s.N1, r2 = s.N2;
+        int u0 = 0, u1 = 0, u2 = 0;
+        long pIdx = permIdx;
+
+        long Binom(int n, int k)
+        {
+            if (k < 0 || k > n) return 0;
+            if (k == 0 || k == n) return 1;
+            if (k > n - k) k = n - k;
+            long r = 1;
+            for (int x = 0; x < k; x++) r = r * (n - x) / (x + 1);
+            return r;
+        }
+
+        for (int slot = 0; slot < s.Len; slot++)
+        {
+            int rem = s.Len - slot - 1;
+            long c0p = r0 > 0 ? Binom(rem, r0-1) * Binom(rem-(r0-1), r1) : 0;
+            long c1p = r1 > 0 ? Binom(rem, r0)   * Binom(rem-r0,     r1-1) : 0;
+            if      (pIdx < c0p)        { result[slot] = gc0[u0++]; r0--; }
+            else if (pIdx < c0p + c1p)  { result[slot] = gc1[u1++]; r1--; pIdx -= c0p; }
+            else                        { result[slot] = gc2[u2++]; r2--; pIdx -= c0p + c1p; }
+        }
+        return System.Text.Encoding.ASCII.GetString(result);
+    }
+
+    static void Monitor(long total, Stopwatch sw, CancellationToken token)
+    {
+        while (!found && !token.IsCancellationRequested)
+        {
+            Thread.Sleep(200);
+            long     current  = Interlocked.Read(ref attempts);
+            double   elapsed  = sw.Elapsed.TotalSeconds;
+            long     speed    = elapsed > 0 ? (long)(current / elapsed) : 0;
+            double   progress = (double)current / total * 100;
+            double   eta      = speed > 0 ? (total - current) / (double)speed : 0;
+            TimeSpan etaT     = TimeSpan.FromSeconds(eta);
+            Console.Write(
+                $"\r[{progress,6:F2}%] {current:N0} tries | {speed:N0}/s | ETA: {etaT.Minutes:D2}:{etaT.Seconds:D2} | Last: {lastGuess,-20}"
+            );
+        }
+    }
+
+    static void Main()
+    {
+        Console.CancelKeyPress += (s, e) =>
+        {
+            Console.WriteLine("\nStopping...");
+            cts.Cancel();
+            e.Cancel = true;
+        };
+
+        // ── Menu ──────────────────────────────────────────────────────────────
+        Console.WriteLine("Select charset mode:");
+        Console.WriteLine("1. Lowercase only");
+        Console.WriteLine("2. Lower + Upper");
+        Console.WriteLine("3. Lower + Upper + Numbers");
+        Console.WriteLine("4. All symbols");
+        Console.WriteLine("5. Policy mode  (8–12 chars, 1+ uppercase, 1+ special) [constrained]");
+        Console.Write("Choice: ");
+        
+        // Fixed CS8600: Handle null return from ReadLine
+        string choice = Console.ReadLine() ?? "";
+
+        bool policyMode = choice == "5";
+
+        switch (choice)
+        {
+            case "2": CHARSET += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; break;
+            case "3": CHARSET += "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; break;
+            case "4": CHARSET += "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" + SPECIALS; break;
+            case "5":
+                CHARSET    += "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" + SPECIALS;
+                MAX_LENGTH  = 12;
+                break;
+        }
+
+        Console.Write($"\nEnter password (max {MAX_LENGTH}): ");
+        string passwordStr = Console.ReadLine() ?? "";
+        if (passwordStr.Length > MAX_LENGTH) { Console.WriteLine($"Too long (max {MAX_LENGTH})."); return; }
+
+        if (policyMode)
+        {
+            if (passwordStr.Length < 8)
+            { Console.WriteLine("Password must be at least 8 characters for policy mode."); return; }
+            if (!passwordStr.Any(char.IsUpper))
+            { Console.WriteLine("Password must contain at least one uppercase letter."); return; }
+            if (!passwordStr.Any(c => SPECIALS.Contains(c)))
+            { Console.WriteLine($"Password must contain at least one special character ({SPECIALS})."); return; }
+        }
+
+        byte[] charsetBytes  = CHARSET.Select(c => (byte)c).ToArray();
+        byte[] passwordBytes = passwordStr.Select(c => (byte)c).ToArray();
+        int    baseLen       = charsetBytes.Length;
+
+        const int BATCH = 200_000_000;
+        // Fixed CS0219: Removed THREADS_PER_BLOCK as ILGPU handles group sizing automatically here
+
+        using var context = Context.CreateDefault();
+        Accelerator accel = null!; // Using null-forgiving operator as we establish it below
+        try
+        {
+            // Fixed CS8600: Explicit nullable handling
+            CudaDevice? cuda = context.Devices.OfType<CudaDevice>().FirstOrDefault();
+            if (cuda != null) accel = cuda.CreateAccelerator(context);
+        }
+        catch { }
+        
+        if (accel == null)
+        {
+            Console.WriteLine("CUDA not found. Using CPU fallback.");
+            accel = context.GetPreferredDevice(preferCPU: true).CreateAccelerator(context);
+        }
+
+        using (accel)
+        {
+            if (!policyMode)
+            {
+                // ── STANDARD MODE (options 1-4) ───────────────────────────────
+                long combinations = (long)Math.Pow(baseLen, passwordBytes.Length);
+                Console.WriteLine($"\nCharset : {baseLen} characters");
+                Console.WriteLine($"Length  : {passwordBytes.Length} characters");
+                Console.WriteLine($"Total   : {combinations:N0} possible combinations");
+
+                long[] powersHost = new long[6];
+                powersHost[0] = 1;
+                for (int i = 1; i < 6; i++) powersHost[i] = powersHost[i - 1] * baseLen;
+
+                var kernelStd = accel.LoadAutoGroupedStreamKernel<
+                    Index1D, ArrayView<byte>, ArrayView<byte>,
+                    ArrayView<int>, ArrayView<long>, ArrayView<long>,
+                    int, int, long>(KernelStandard);
+
+                using var dCharset  = accel.Allocate1D<byte>(charsetBytes.Length);
+                using var dPassword = accel.Allocate1D<byte>(passwordBytes.Length);
+                using var dPowers   = accel.Allocate1D<long>(6);
+                dCharset.CopyFromCPU(charsetBytes);
+                dPassword.CopyFromCPU(passwordBytes);
+                dPowers.CopyFromCPU(powersHost);
+
+                using var dFoundA  = accel.Allocate1D<int>(1);
+                using var dResultA = accel.Allocate1D<long>(1);
+                using var dFoundB  = accel.Allocate1D<int>(1);
+                using var dResultB = accel.Allocate1D<long>(1);
+                int[] hFA = new int[1]; long[] hRA = new long[1];
+                int[] hFB = new int[1]; long[] hRB = new long[1];
+                dFoundA.MemSetToZero(); dResultA.MemSetToZero();
+                dFoundB.MemSetToZero(); dResultB.MemSetToZero();
+
+                void LaunchStd(int size, MemoryBuffer1D<int,Stride1D.Dense> dF,
+                                         MemoryBuffer1D<long,Stride1D.Dense> dR, long off)
+                {
+                    kernelStd((Index1D)size,
+                        dCharset.View, dPassword.View, dF.View, dR.View, dPowers.View,
+                        baseLen, passwordBytes.Length, off);
+                }
+
+                string DecodeStd(long idx)
+                {
+                    char[] g = new char[passwordBytes.Length]; long t = idx;
+                    for (int i = 0; i < g.Length; i++) { g[i]=(char)charsetBytes[t%baseLen]; t/=baseLen; }
+                    return new string(g);
+                }
+
+                RunDoubleBuffer(accel, combinations, BATCH,
+                    LaunchStd, DecodeStd,
+                    dFoundA, dResultA, dFoundB, dResultB,
+                    hFA, hRA, hFB, hRB);
+            }
+            else
+            {
+                // ── POLICY MODE (option 5) — constrained search ───────────────
+                byte[] g0 = "abcdefghijklmnopqrstuvwxyz".Select(c=>(byte)c).ToArray();
+                byte[] g1 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".Select(c=>(byte)c).ToArray();
+                byte[] g2 = ("0123456789" + SPECIALS).Select(c=>(byte)c).ToArray();
+
+                var (segs, total) = BuildSegments(8, 12, g0.Length, g1.Length, g2.Length);
+
+                long[] segOffsetsHost = new long[segs.Count];
+                long running = 0;
+                for (int i = 0; i < segs.Count; i++)
+                { segOffsetsHost[i] = running; running += segs[i].Size; }
+
+                Console.WriteLine($"\nCharset  : {baseLen} characters  (lower | upper | digits+special)");
+                Console.WriteLine($"Length   : 8–12 characters (policy)");
+                Console.WriteLine($"Segments : {segs.Count}");
+                Console.WriteLine($"Total    : {total:N0} valid combinations (vs {(long)Math.Pow(baseLen,passwordBytes.Length):N0} naïve)");
+
+                int n = segs.Count;
+                using var dGroupData    = accel.Allocate1D<byte>(g0.Length + g1.Length + g2.Length);
+                using var dGroupSizes   = accel.Allocate1D<int>(3);
+                using var dGroupOffsets = accel.Allocate1D<int>(3);
+                using var dSegOffsets   = accel.Allocate1D<long>(n);
+                using var dSegN0        = accel.Allocate1D<int>(n);
+                using var dSegN1        = accel.Allocate1D<int>(n);
+                using var dSegN2        = accel.Allocate1D<int>(n);
+                using var dSegGroupSz   = accel.Allocate1D<long>(n);
+                using var dSegPerms     = accel.Allocate1D<long>(n);
+                using var dSegPP0       = accel.Allocate1D<long>(n);
+                using var dSegPP1       = accel.Allocate1D<long>(n);
+                using var dSegPP2       = accel.Allocate1D<long>(n);
+                using var dPassword     = accel.Allocate1D<byte>(passwordBytes.Length);
+
+                byte[] groupDataHost = g0.Concat(g1).Concat(g2).ToArray();
+                dGroupData.CopyFromCPU(groupDataHost);
+                dGroupSizes.CopyFromCPU(new int[]{ g0.Length, g1.Length, g2.Length });
+                dGroupOffsets.CopyFromCPU(new int[]{ 0, g0.Length, g0.Length+g1.Length });
+                dSegOffsets.CopyFromCPU(segOffsetsHost);
+                dSegN0.CopyFromCPU(segs.Select(s=>s.N0).ToArray());
+                dSegN1.CopyFromCPU(segs.Select(s=>s.N1).ToArray());
+                dSegN2.CopyFromCPU(segs.Select(s=>s.N2).ToArray());
+                dSegGroupSz.CopyFromCPU(segs.Select(s=>s.Size).ToArray());
+                dSegPerms.CopyFromCPU(segs.Select(s=>s.Perms).ToArray());
+                dSegPP0.CopyFromCPU(segs.Select(s=>s.PP0).ToArray());
+                dSegPP1.CopyFromCPU(segs.Select(s=>s.PP1).ToArray());
+                dSegPP2.CopyFromCPU(segs.Select(s=>s.PP2).ToArray());
+                dPassword.CopyFromCPU(passwordBytes);
+
+                // ── Load the kernel using the new Struct wrapper ──────────────
+                var kernelCon = accel.LoadAutoGroupedStreamKernel<Index1D, ConstrainedArgs>(KernelConstrained);
+
+                using var dFoundA  = accel.Allocate1D<int>(1);
+                using var dResultA = accel.Allocate1D<long>(1);
+                using var dFoundB  = accel.Allocate1D<int>(1);
+                using var dResultB = accel.Allocate1D<long>(1);
+                int[] hFA = new int[1]; long[] hRA = new long[1];
+                int[] hFB = new int[1]; long[] hRB = new long[1];
+                dFoundA.MemSetToZero(); dResultA.MemSetToZero();
+                dFoundB.MemSetToZero(); dResultB.MemSetToZero();
+
+                void LaunchCon(int size, MemoryBuffer1D<int,Stride1D.Dense> dF,
+                                         MemoryBuffer1D<long,Stride1D.Dense> dR, long off)
+                {
+                    // Pack our arguments
+                    var args = new ConstrainedArgs
+                    {
+                        GroupData = dGroupData.View,
+                        GroupSizes = dGroupSizes.View,
+                        GroupOffsets = dGroupOffsets.View,
+                        Password = dPassword.View,
+                        FoundFlag = dF.View,
+                        Result = dR.View,
+                        SegOffsets = dSegOffsets.View,
+                        SegN0 = dSegN0.View,
+                        SegN1 = dSegN1.View,
+                        SegN2 = dSegN2.View,
+                        SegGroupSizes = dSegGroupSz.View,
+                        SegPerms = dSegPerms.View,
+                        SegPermPowers0 = dSegPP0.View,
+                        SegPermPowers1 = dSegPP1.View,
+                        SegPermPowers2 = dSegPP2.View,
+                        NumSegs = n,
+                        Length = passwordBytes.Length,
+                        Offset = off
+                    };
+
+                    kernelCon((Index1D)size, args);
+                }
+
+                string DecodeCon(long idx) =>
+                    DecodeConstrained(idx, segs, segOffsetsHost, g0, g1, g2);
+
+                RunDoubleBuffer(accel, total, BATCH,
+                    LaunchCon, DecodeCon,
+                    dFoundA, dResultA, dFoundB, dResultB,
+                    hFA, hRA, hFB, hRB);
+            }
+        }
+    }
+
+    // ── Shared double-buffer loop ─────────────────────────────────────────────
+    static void RunDoubleBuffer(
+        Accelerator accel,
+        long total, int BATCH,
+        Action<int, MemoryBuffer1D<int,Stride1D.Dense>, MemoryBuffer1D<long,Stride1D.Dense>, long> launch,
+        Func<long, string> decode,
+        MemoryBuffer1D<int,Stride1D.Dense>  dFoundA, MemoryBuffer1D<long,Stride1D.Dense> dResultA,
+        MemoryBuffer1D<int,Stride1D.Dense>  dFoundB, MemoryBuffer1D<long,Stride1D.Dense> dResultB,
+        int[] hFA, long[] hRA, int[] hFB, long[] hRB)
+    {
+        var sw = Stopwatch.StartNew();
+        Task.Run(() => Monitor(total, sw, cts.Token));
+
+        int firstSize = (int)Math.Min(BATCH, total);
+        launch(firstSize, dFoundA, dResultA, 0L);
+
+        bool useA   = false;
+        long offset = BATCH;
+
+        while (!found && !cts.IsCancellationRequested)
+        {
+            var dFC = useA ? dFoundA  : dFoundB;
+            var dRC = useA ? dResultA : dResultB;
+            var dFP = useA ? dFoundB  : dFoundA;
+            var dRP = useA ? dResultB : dResultA;
+            int[]  hFP = useA ? hFB : hFA;
+            long[] hRP = useA ? hRB : hRA;
+
+            bool hasMore = offset < total && !found;
+            int  size    = hasMore ? (int)Math.Min(BATCH, total - offset) : 0;
+
+            if (hasMore)
+            {
+                dFC.MemSetToZero(); dRC.MemSetToZero();
+                launch(size, dFC, dRC, offset);
+            }
+
+            accel.Synchronize();
+            dFP.CopyToCPU(hFP);
+
+            if (hFP[0] == 1)
+            {
+                dRP.CopyToCPU(hRP);
+                lastGuess = decode(hRP[0]);
+                Console.WriteLine($"\n\nPassword cracked: {lastGuess}");
+                found = true; break;
+            }
+
+            long prevSize = offset == BATCH ? firstSize : Math.Min(BATCH, total - (offset - BATCH));
+            Interlocked.Add(ref attempts, prevSize);
+            lastGuess = $"batch @ {offset - BATCH:N0}";
+
+            if (!hasMore) break;
+            offset += BATCH;
+            useA = !useA;
+        }
+
+        if (!found)
+        {
+            accel.Synchronize();
+            var dFL = useA ? dFoundB  : dFoundA;
+            var dRL = useA ? dResultB : dResultA;
+            int[] hFL = new int[1]; long[] hRL = new long[1];
+            dFL.CopyToCPU(hFL);
+            if (hFL[0] == 1)
+            {
+                dRL.CopyToCPU(hRL);
+                lastGuess = decode(hRL[0]);
+                Console.WriteLine($"\n\nPassword cracked: {lastGuess}");
+                found = true;
+            }
+        }
+
+        sw.Stop(); found = true;
+        Console.WriteLine($"\nTime: {sw.Elapsed.TotalSeconds:F2}s | Attempts: {attempts:N0}");
+    }
+}
