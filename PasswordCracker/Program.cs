@@ -475,3 +475,5 @@ class Program
         Console.WriteLine($"\nTime: {sw.Elapsed.TotalSeconds:F2}s | Attempts: {attempts:N0}");
     }
 }
+
+// dotnet run -c Release
