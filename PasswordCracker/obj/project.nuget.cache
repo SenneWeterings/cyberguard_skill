@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "I+2eqY00vaM=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Emmen\\OneDrive\\Assingments\\Thomas more\\Second year\\Skill Integration Lab 1\\BRUTEFORCE DEMO\\PasswordCracker\\PasswordCracker.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Emmen\\.nuget\\packages\\ilgpu\\1.5.3\\ilgpu.1.5.3.nupkg.sha512",
+    "C:\\Users\\Emmen\\.nuget\\packages\\ilgpu.algorithms\\1.5.3\\ilgpu.algorithms.1.5.3.nupkg.sha512"
+  ],
+  "logs": []
+}
