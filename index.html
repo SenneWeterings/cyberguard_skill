@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Cyberguard Initiative</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+    <style>
+        :root {
+            /* backgrounds — deep navy scale with clear separation */
+            --navy:  #050f1c;   /* page bg */
+            --navy2: #071829;   /* body bg  */
+            --navy3: #0c2340;   /* subtle lift */
+            --panel: #0e2846;   /* card / panel surface */
+            --panel2:#132f52;   /* slightly raised panel */
+
+            /* accent — vivid cyan that pops on dark navy */
+            --accent:  #00d4d4; /* primary CTA, links, tags */
+            --accent2: #67e8e8; /* headings, stat numbers */
+            --accent3: #b2f5f5; /* soft accent text */
+            --glow: rgba(0,212,212,0.14);
+
+            /* semantic */
+            --danger:  #f87171; /* brighter red for dark bg */
+            --warn:    #fbbf24; /* amber */
+            --success: #34d399; /* brighter green for dark bg */
+
+            /* text */
+            --text:    #f0f6ff; /* near-white body text */
+            --muted:   #8db4cc; /* secondary text — still readable */
+
+            /* borders */
+            --border: rgba(0,212,212,0.22);
+
+            --mono: 'Space Mono', monospace;
+            --sans: 'Syne', sans-serif;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: var(--navy2);
+            color: var(--text);
+            font-family: var(--sans);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── grid noise overlay ── */
+        body::before {
+            content:'';
+            position:fixed; inset:0; pointer-events:none; z-index:0;
+            background-image:
+                    linear-gradient(rgba(0,212,212,0.04) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0,212,212,0.04) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* ── NAV ── */
+        nav {
+            position:fixed; top:0; left:0; right:0; z-index:100;
+            display:flex; align-items:center; justify-content:space-between;
+            padding: 0 2.5rem;
+            height: 64px;
+            background: rgba(5,15,28,0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo {
+            display:flex; align-items:center; gap: 10px;
+            font-family: var(--sans); font-weight:800; font-size:1.1rem;
+            color: var(--accent3); letter-spacing:0.02em; text-decoration:none;
+        }
+        .nav-logo .shield {
+            width:28px; height:28px;
+            background: linear-gradient(135deg, #00d4d4, #0097b2);
+            border-radius:6px 6px 10px 10px;
+            display:flex; align-items:center; justify-content:center;
+            font-size:14px; flex-shrink:0;
+        }
+        .nav-links { display:flex; gap:0.25rem; }
+        .nav-btn {
+            background:none; border:none; cursor:pointer;
+            font-family: var(--mono); font-size:0.78rem; letter-spacing:0.04em;
+            color: var(--muted); padding: 6px 14px; border-radius:6px;
+            transition: color 0.2s, background 0.2s;
+        }
+        .nav-btn:hover { color: var(--accent2); background: var(--glow); }
+        .nav-btn.active { color: var(--accent2); background: var(--glow); }
+
+        /* ── PAGES ── */
+        .page { display:none; padding-top:64px; min-height:100vh; position:relative; z-index:1; }
+        .page.visible { display:block; }
+
+        /* ── HERO (HOME) ── */
+        .hero {
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            min-height: calc(100vh - 64px);
+            text-align:center; padding: 4rem 2rem;
+        }
+        .hero-badge {
+            font-family:var(--mono); font-size:0.72rem; letter-spacing:0.15em;
+            color: var(--accent2); background: rgba(0,212,212,0.12);
+            border:1px solid rgba(0,212,212,0.35); border-radius:20px;
+            padding: 5px 16px; margin-bottom: 2rem;
+            text-transform: uppercase;
+        }
+        .hero h1 {
+            font-weight:800; font-size: clamp(2.4rem, 6vw, 4.5rem);
+            line-height:1.05; margin-bottom:1.5rem;
+            background: linear-gradient(135deg, #f0f6ff 30%, #00d4d4 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .hero p {
+            max-width:560px; color:var(--muted); font-size:1.05rem;
+            line-height:1.7; margin-bottom:3rem;
+            font-family: var(--mono); font-size:0.85rem;
+        }
+        .hero-cards {
+            display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+            gap:1rem; max-width:800px; width:100%; margin-bottom:3rem;
+        }
+        .hero-card {
+            background: var(--panel); border:1px solid var(--border);
+            border-radius:12px; padding:1.5rem 1.25rem;
+            cursor:pointer; transition: border-color 0.2s, transform 0.2s;
+            text-align:left;
+        }
+        .hero-card:hover { border-color: var(--accent); transform: translateY(-3px); }
+        .hero-card .icon { font-size:1.8rem; margin-bottom:0.75rem; }
+        .hero-card h3 { font-size:0.95rem; font-weight:600; margin-bottom:0.4rem; }
+        .hero-card p { font-size:0.78rem; color:var(--muted); line-height:1.5; font-family:var(--mono); }
+        .hero-stats {
+            display:flex; gap:3rem; justify-content:center; flex-wrap:wrap;
+        }
+        .stat { text-align:center; }
+        .stat-num { font-size:2rem; font-weight:800; color:var(--accent2); font-family:var(--mono); letter-spacing:-0.01em; }
+        .stat-label { font-size:0.75rem; color:var(--muted); font-family:var(--mono); letter-spacing:0.05em; }
+
+        /* ── SECTION WRAPPER ── */
+        .section { max-width:860px; margin:0 auto; padding:3rem 2rem; }
+        .section-header { margin-bottom:2.5rem; }
+        .section-header .tag {
+            font-family:var(--mono); font-size:0.7rem; letter-spacing:0.12em;
+            color:var(--accent); text-transform:uppercase; margin-bottom:0.75rem; display:block;
+        }
+        .section-header h2 { font-weight:800; font-size:1.9rem; line-height:1.1; }
+        .section-header p { color:var(--muted); font-family:var(--mono); font-size:0.82rem; margin-top:0.6rem; line-height:1.6; }
+
+        /* ── PASSWORD CRACKER ── */
+        .cracker-layout { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+        @media(max-width:640px){.cracker-layout{grid-template-columns:1fr;}}
+        .panel-box {
+            background:var(--panel); border:1px solid var(--border);
+            border-radius:14px; padding:1.5rem;
+        }
+        .panel-box h3 { font-size:0.9rem; font-weight:600; margin-bottom:1.25rem; color:var(--accent2); }
+        .field-label { font-family:var(--mono); font-size:0.72rem; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:6px; display:block; }
+        .field-input {
+            width:100%; background: rgba(3,10,20,0.7); border:1px solid var(--border);
+            border-radius:8px; padding:10px 14px; color:var(--text);
+            font-family:var(--mono); font-size:0.85rem;
+            outline:none; transition:border-color 0.2s;
+        }
+        .field-input:focus { border-color:var(--accent); }
+        .field-input::placeholder { color:var(--muted); }
+        .field-group { margin-bottom:1rem; }
+        .select-input {
+            width:100%; background: rgba(3,10,20,0.7); border:1px solid var(--border);
+            border-radius:8px; padding:10px 14px; color:var(--text);
+            font-family:var(--mono); font-size:0.82rem; outline:none; cursor:pointer;
+        }
+        .btn-primary {
+            width:100%; padding:11px; background:var(--accent);
+            border:none; border-radius:8px; color:#071829; font-family:var(--mono);
+            font-size:0.82rem; font-weight:700; letter-spacing:0.06em; cursor:pointer;
+            transition:opacity 0.2s, transform 0.1s; margin-top:0.5rem;
+        }
+        .btn-primary:hover { opacity:0.88; }
+        .btn-primary:active { transform:scale(0.98); }
+        .btn-danger {
+            width:100%; padding:11px; background:linear-gradient(135deg,#ef4444,#b91c1c);
+            border:none; border-radius:8px; color:#fff; font-family:var(--mono);
+            font-size:0.82rem; font-weight:700; cursor:pointer; transition:opacity 0.2s; margin-top:0.5rem;
+        }
+        .btn-danger:hover{opacity:0.85;}
+        .output-box {
+            background: rgba(3,10,20,0.85); border:1px solid var(--border);
+            border-radius:10px; padding:1rem; min-height:120px;
+            font-family:var(--mono); font-size:0.78rem; color:var(--accent3);
+            line-height:1.7; white-space:pre-wrap; word-break:break-all;
+        }
+        .strength-bar { height:6px; border-radius:3px; margin-top:8px; transition:width 0.4s, background 0.4s; }
+        .strength-label { font-family:var(--mono); font-size:0.72rem; margin-top:5px; }
+
+        /* progress animation */
+        .progress-ring {
+            display:flex; flex-direction:column; align-items:center; gap:8px; margin:1rem 0;
+        }
+        .progress-ring canvas { display:block; }
+        #crack-status { font-family:var(--mono); font-size:0.78rem; color:var(--accent2); text-align:center; }
+
+        /* ── PHISHING ── */
+        .threat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:1rem; margin-bottom:2rem; }
+        .threat-card {
+            background:var(--panel); border:1px solid var(--border);
+            border-radius:12px; padding:1.25rem; position:relative; overflow:hidden;
+        }
+        .threat-card::before {
+            content:''; position:absolute; top:0; left:0; right:0; height:3px;
+        }
+        .threat-card.red::before { background:var(--danger); }
+        .threat-card.amber::before { background:var(--warn); }
+        .threat-card.blue::before { background:var(--accent); }
+        .threat-card.green::before { background:var(--success); }
+        .threat-card .tc-icon { font-size:1.6rem; margin-bottom:0.7rem; }
+        .threat-card h4 { font-size:0.9rem; font-weight:600; margin-bottom:0.4rem; }
+        .threat-card p { font-size:0.78rem; color:var(--muted); font-family:var(--mono); line-height:1.55; }
+        .threat-card .severity {
+            display:inline-block; margin-top:0.75rem; font-family:var(--mono);
+            font-size:0.66rem; padding:3px 10px; border-radius:4px; letter-spacing:0.08em; text-transform:uppercase;
+        }
+        .sev-critical { background:rgba(248,113,113,0.18); color:#fca5a5; border:1px solid rgba(248,113,113,0.45); }
+        .sev-high { background:rgba(251,191,36,0.18); color:#fde68a; border:1px solid rgba(251,191,36,0.45); }
+        .sev-medium { background:rgba(0,212,212,0.15); color:var(--accent3); border:1px solid rgba(0,212,212,0.35); }
+
+        /* email simulator */
+        .email-sim {
+            background:var(--panel); border:1px solid var(--border); border-radius:14px; overflow:hidden;
+        }
+        .email-header-bar {
+            background:rgba(3,10,20,0.7); padding:0.85rem 1.25rem;
+            border-bottom:1px solid var(--border);
+            display:flex; justify-content:space-between; align-items:center;
+        }
+        .email-header-bar span { font-family:var(--mono); font-size:0.75rem; color:var(--muted); }
+        .email-body { padding:1.5rem; }
+        .email-meta { margin-bottom:1rem; }
+        .email-meta div { font-family:var(--mono); font-size:0.78rem; margin-bottom:4px; }
+        .email-meta .key { color:var(--muted); }
+        .email-meta .val { color:var(--text); }
+        .email-content { background:rgba(3,10,20,0.55); border-radius:8px; padding:1rem; font-family:var(--mono); font-size:0.8rem; line-height:1.7; color:var(--text); border:1px solid var(--border); }
+        .email-content a { color:var(--danger); text-decoration:underline; cursor:default; }
+        .red-flag {
+            display:flex; align-items:flex-start; gap:10px; margin-top:0.6rem;
+            background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25);
+            border-radius:8px; padding:0.7rem 0.9rem;
+            font-family:var(--mono); font-size:0.76rem; color:#fca5a5; line-height:1.5;
+        }
+        .red-flag .flag-num { color:var(--danger); font-weight:700; flex-shrink:0; }
+        .red-flags-title { font-family:var(--mono); font-size:0.72rem; color:var(--danger); letter-spacing:0.1em; text-transform:uppercase; margin:1rem 0 0.5rem; }
+
+        /* quiz */
+        .quiz-box { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:1.5rem; margin-top:1.5rem; }
+        .quiz-q { font-size:0.92rem; font-weight:600; margin-bottom:1rem; }
+        .quiz-options { display:flex; flex-direction:column; gap:0.5rem; }
+        .quiz-opt {
+            background:rgba(3,10,20,0.5); border:1px solid var(--border);
+            border-radius:8px; padding:10px 14px; cursor:pointer;
+            font-family:var(--mono); font-size:0.8rem; transition: border-color 0.2s, background 0.2s;
+            text-align:left;
+        }
+        .quiz-opt:hover { border-color:var(--accent); background:var(--glow); }
+        .quiz-opt.correct { border-color:var(--success)!important; background:rgba(34,197,94,0.1)!important; color:#86efac; }
+        .quiz-opt.wrong { border-color:var(--danger)!important; background:rgba(239,68,68,0.1)!important; color:#fca5a5; }
+        .quiz-feedback { font-family:var(--mono); font-size:0.78rem; margin-top:0.75rem; padding:0.7rem; border-radius:8px; display:none; }
+        .quiz-feedback.show { display:block; }
+        .quiz-feedback.ok { background:rgba(34,197,94,0.1); color:#86efac; border:1px solid rgba(34,197,94,0.3); }
+        .quiz-feedback.bad { background:rgba(239,68,68,0.1); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); }
+        .btn-next { margin-top:1rem; padding:9px 20px; background:var(--accent); border:none; border-radius:8px; color:#071829; font-family:var(--mono); font-size:0.78rem; font-weight:700; cursor:pointer; display:none; }
+        .btn-next.show { display:inline-block; }
+
+        /* ── TIPS PAGE ── */
+        .tips-list { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; }
+        @media(max-width:760px){.tips-list{grid-template-columns:repeat(2,1fr);}}
+        @media(max-width:480px){.tips-list{grid-template-columns:1fr;}}
+        .tip-item {
+            background:var(--panel); border:1px solid var(--border); border-radius:12px;
+            padding:1.25rem; display:flex; flex-direction:column; gap:0.75rem;
+        }
+        .tip-num {
+            width:32px; height:32px; border-radius:8px; background:rgba(0,212,212,0.14);
+            border:1px solid rgba(0,212,212,0.3); display:flex; align-items:center; justify-content:center;
+            font-family:var(--mono); font-size:0.78rem; color:var(--accent2); flex-shrink:0; margin-bottom:0.25rem;
+        }
+        .tip-item h4 { font-size:0.88rem; font-weight:600; margin-bottom:0.35rem; }
+        .tip-item > div { display:flex; flex-direction:column; }
+        .tip-item h4 { font-size:0.9rem; font-weight:600; margin-bottom:0.3rem; }
+        .tip-item p { font-family:var(--mono); font-size:0.78rem; color:var(--muted); line-height:1.55; }
+
+        /* ── FOOTER ── */
+        .footer {
+            border-top:1px solid var(--border); padding:2rem; text-align:center;
+            font-family:var(--mono); font-size:0.75rem; color:var(--muted);
+        }
+
+        /* ── ANIMATIONS ── */
+        @keyframes fadeUp { from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);} }
+        .page.visible .hero, .page.visible .section { animation: fadeUp 0.45s ease forwards; }
+
+        /* ── quiz link hover ── */
+        .quiz-link {
+            color: var(--accent2);
+            text-decoration: underline;
+            cursor: default;
+            position: relative;
+            display: inline-block;
+        }
+        .link-tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 0;
+            background: #050f1c;
+            border: 1px solid var(--accent);
+            color: var(--accent3);
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            padding: 5px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            z-index: 50;
+            max-width: 420px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            pointer-events: none;
+        }
+        .link-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 14px;
+            border: 5px solid transparent;
+            border-top-color: var(--accent);
+        }
+
+    </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+    <a class="nav-logo" href="#" onclick="showPage('home')">
+        <div class="shield">🛡</div>
+        Cyberguard Initiative
+    </a>
+    <div class="nav-links">
+        <button class="nav-btn active" id="nav-home" onclick="showPage('home')">Home</button>
+        <button class="nav-btn" id="nav-cracker" onclick="showPage('cracker')">Password Lab</button>
+        <button class="nav-btn" id="nav-phishing" onclick="showPage('phishing')">Phishing</button>
+        <button class="nav-btn" id="nav-tips" onclick="showPage('tips')">Best Practices</button>
+    </div>
+</nav>
+
+<!-- ══════════════════ HOME ══════════════════ -->
+<div class="page visible" id="page-home">
+    <div class="hero">
+        <div class="hero-badge">⚡ Cybersecurity Education Platform</div>
+        <h1>Defend.<br/>Detect.<br/>Educate.</h1>
+        <p>Interactive tools to understand real-world cyber threats — password security, phishing attacks, and hardening best practices.</p>
+
+        <!-- ── Password widget ── -->
+        <div style="width:100%;max-width:520px;margin-bottom:2.5rem;">
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:16px;padding:1.75rem 1.5rem;">
+                <div style="font-family:var(--mono);font-size:0.7rem;letter-spacing:0.12em;color:var(--accent2);text-transform:uppercase;margin-bottom:1rem;">Password Cracker</div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <input class="field-input" type="text" id="home-pw-input" placeholder="Enter a password to test..." oninput="homeStrength()" style="flex:1;"/>
+                    <button onclick="homeSend()" style="padding:10px 22px;background:var(--accent);border:none;border-radius:8px;color:#071829;font-family:var(--mono);font-size:0.8rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:opacity 0.2s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">Send ▶</button>
+                </div>
+                <!-- strength bar -->
+                <div style="background:rgba(0,212,212,0.1);border-radius:4px;height:4px;margin-top:10px;overflow:hidden;">
+                    <div id="home-bar" style="height:100%;width:0%;border-radius:4px;transition:width 0.35s,background 0.35s;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+                    <span id="home-strength-lbl" style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);"></span>
+                    <span id="home-entropy-lbl" style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);"></span>
+                </div>
+                <!-- result -->
+                <div id="home-result" style="display:none;margin-top:1rem;background:rgba(3,10,20,0.7);border:1px solid var(--border);border-radius:10px;padding:0.9rem 1rem;font-family:var(--mono);font-size:0.77rem;color:var(--accent2);line-height:1.7;white-space:pre-wrap;word-break:break-all;"></div>
+                <div id="home-stats" style="display:none;margin-top:0.75rem;display:none;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                    <div style="background:rgba(3,10,20,0.5);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">
+                        <div style="font-family:var(--mono);font-size:0.62rem;color:var(--accent3);opacity:0.75;">ENTROPY</div>
+                        <div id="hs-entropy" style="font-family:var(--mono);font-size:1rem;font-weight:700;color:var(--accent2);">—</div>
+                    </div>
+                    <div style="background:rgba(3,10,20,0.5);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">
+                        <div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);">CRACK TIME</div>
+                        <div id="hs-time" style="font-family:var(--mono);font-size:1rem;font-weight:700;color:var(--warn);">—</div>
+                    </div>
+                    <div style="background:rgba(3,10,20,0.5);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">
+                        <div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);">STATUS</div>
+                        <div id="hs-status" style="font-family:var(--mono);font-size:1rem;font-weight:700;">—</div>
+                    </div>
+                </div>
+            </div>
+            <div style="font-family:var(--mono);font-size:0.68rem;color:var(--accent3);opacity:0.8;text-align:center;margin-top:0.6rem;">
+                Configure your backend endpoint in <span style="color:var(--accent2);cursor:pointer;" onclick="showPage('cracker')">Password Lab →</span>
+            </div>
+        </div>
+
+        <div class="hero-cards">
+            <div class="hero-card" onclick="showPage('cracker')">
+                <div class="icon">🔑</div>
+                <h3>Password Lab</h3>
+                <p>Full config: attack method, hash type, and live backend response.</p>
+            </div>
+            <div class="hero-card" onclick="showPage('phishing')">
+                <div class="icon">🎣</div>
+                <h3>Phishing Awareness</h3>
+                <p>Spot social engineering tactics with interactive examples and quizzes.</p>
+            </div>
+            <div class="hero-card" onclick="showPage('tips')">
+                <div class="icon">🔒</div>
+                <h3>Best Practices</h3>
+                <p>Actionable security habits every user and organisation should adopt.</p>
+            </div>
+        </div>
+        <div class="hero-stats">
+            <div class="stat"><div class="stat-num">3.4B</div><div class="stat-label">phishing emails / day</div></div>
+            <div class="stat"><div class="stat-num">80%</div><div class="stat-label">breaches use weak passwords</div></div>
+            <div class="stat"><div class="stat-num">30s</div><div class="stat-label">avg brute-force for 6-char pw</div></div>
+        </div>
+    </div>
+    <div class="footer">© 2025 Cyberguard Initiative · For educational use only</div>
+</div>
+
+<!-- ══════════════════ PASSWORD CRACKER ══════════════════ -->
+<div class="page" id="page-cracker">
+    <div class="section">
+        <div class="section-header">
+            <span class="tag">// password lab</span>
+            <h2>Password Security Tester</h2>
+            <p>Submit a password to your backend API for analysis — strength scoring, entropy calculation, and simulated crack time.</p>
+        </div>
+
+        <div class="cracker-layout">
+            <!-- Input panel -->
+            <div class="panel-box">
+                <h3>⚙ Configuration</h3>
+                <div class="field-group">
+                    <label class="field-label">Password to test</label>
+                    <input class="field-input" type="text" id="pw-input" placeholder="Enter password..." oninput="updateStrength()" />
+                    <div style="background:rgba(0,212,212,0.1);border-radius:6px;height:6px;margin-top:8px;overflow:hidden;">
+                        <div class="strength-bar" id="strength-bar" style="width:0%;background:var(--danger);"></div>
+                    </div>
+                    <div class="strength-label" id="strength-label" style="font-family:var(--mono);font-size:0.72rem;color:var(--muted);"></div>
+                </div>
+                <div class="field-group">
+                    <label class="field-label">Attack method</label>
+                    <select class="select-input" id="attack-method">
+                        <option value="bruteforce">Brute Force</option>
+                        <option value="dictionary">Dictionary Attack</option>
+                        <option value="hybrid">Hybrid Attack</option>
+                        <option value="rainbow">Rainbow Table</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label class="field-label">Backend endpoint URL</label>
+                    <input class="field-input" type="text" id="api-url" placeholder="https://your-api.com/crack" />
+                </div>
+                <div class="field-group">
+                    <label class="field-label">Hash type (optional)</label>
+                    <select class="select-input" id="hash-type">
+                        <option value="plaintext">Plaintext</option>
+                        <option value="md5">MD5</option>
+                        <option value="sha1">SHA-1</option>
+                        <option value="sha256">SHA-256</option>
+                        <option value="bcrypt">bcrypt</option>
+                    </select>
+                </div>
+                <button class="btn-primary" onclick="sendCrackRequest()">▶ Send to Backend</button>
+                <button class="btn-danger" onclick="clearResults()" style="margin-top:8px;">✕ Clear</button>
+            </div>
+
+            <!-- Output panel -->
+            <div class="panel-box">
+                <h3>📡 Backend Response</h3>
+                <div class="progress-ring" id="progress-wrap" style="display:none;">
+                    <div id="crack-status">Connecting to backend...</div>
+                </div>
+                <div class="output-box" id="output-box">// Results will appear here after submitting to your backend.</div>
+                <div id="result-stats" style="margin-top:1rem;display:none;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div style="background:rgba(3,10,20,0.5);border:1px solid var(--border);border-radius:8px;padding:0.75rem;">
+                            <div style="font-family:var(--mono);font-size:0.66rem;color:var(--muted);margin-bottom:4px;">ENTROPY</div>
+                            <div style="font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--accent2);" id="stat-entropy">—</div>
+                        </div>
+                        <div style="background:rgba(3,10,20,0.5);border:1px solid var(--border);border-radius:8px;padding:0.75rem;">
+                            <div style="font-family:var(--mono);font-size:0.66rem;color:var(--muted);margin-bottom:4px;">CRACK TIME</div>
+                            <div style="font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--warn);" id="stat-time">—</div>
+                        </div>
+                        <div style="background:rgba(3,10,20,0.5);border:1px solid var(--border);border-radius:8px;padding:0.75rem;">
+                            <div style="font-family:var(--mono);font-size:0.66rem;color:var(--muted);margin-bottom:4px;">SCORE</div>
+                            <div style="font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--success);" id="stat-score">—</div>
+                        </div>
+                        <div style="background:rgba(3,10,20,0.5);border:1px solid var(--border);border-radius:8px;padding:0.75rem;">
+                            <div style="font-family:var(--mono);font-size:0.66rem;color:var(--muted);margin-bottom:4px;">STATUS</div>
+                            <div style="font-family:var(--mono);font-size:1.1rem;font-weight:700;" id="stat-status">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-box" style="margin-top:1.5rem;">
+            <h3>📋 How to connect your backend</h3>
+            <div class="output-box" style="min-height:unset;">// Expected POST body sent to your endpoint:
+                {
+                "password": "&lt;user input&gt;",
+                "method": "bruteforce | dictionary | hybrid | rainbow",
+                "hash_type": "plaintext | md5 | sha1 | sha256 | bcrypt"
+                }
+
+                // Expected JSON response from your backend:
+                {
+                "cracked": true | false,
+                "result": "cracked password or null",
+                "entropy_bits": 42.3,
+                "estimated_crack_time": "3 hours",
+                "score": 2,           // 0-4 (like zxcvbn)
+                "message": "Optional human-readable analysis"
+                }</div>
+        </div>
+    </div>
+    <div class="footer">© 2025 Cyberguard Initiative · For educational use only</div>
+</div>
+
+<!-- ══════════════════ PHISHING ══════════════════ -->
+<div class="page" id="page-phishing">
+    <div class="section">
+        <div class="section-header">
+            <span class="tag">// phishing awareness</span>
+            <h2>Social Engineering Threats</h2>
+            <p>Learn to identify phishing, smishing, vishing, and other social engineering attacks before they trick you.</p>
+        </div>
+
+        <div class="threat-grid">
+            <div class="threat-card red">
+                <div class="tc-icon">📧</div>
+                <h4>Email Phishing</h4>
+                <p>Fraudulent emails impersonating trusted organisations to steal credentials or install malware.</p>
+                <span class="severity sev-critical">Critical</span>
+            </div>
+            <div class="threat-card amber">
+                <div class="tc-icon">📱</div>
+                <h4>Smishing (SMS)</h4>
+                <p>Text messages crafted to create urgency — fake bank alerts, parcel tracking, or prize notifications.</p>
+                <span class="severity sev-high">High</span>
+            </div>
+            <div class="threat-card amber">
+                <div class="tc-icon">🎙</div>
+                <h4>Vishing (Voice)</h4>
+                <p>Phone call scams impersonating IT support, government agencies, or financial institutions.</p>
+                <span class="severity sev-high">High</span>
+            </div>
+            <div class="threat-card blue">
+                <div class="tc-icon">🐋</div>
+                <h4>Whaling</h4>
+                <p>Highly targeted spear-phishing aimed at executives, CFOs, and C-suite employees for large wire transfers.</p>
+                <span class="severity sev-medium">Medium</span>
+            </div>
+            <div class="threat-card red">
+                <div class="tc-icon">🔗</div>
+                <h4>Pharming</h4>
+                <p>DNS manipulation that redirects users to fraudulent websites even when they type the correct URL.</p>
+                <span class="severity sev-critical">Critical</span>
+            </div>
+            <div class="threat-card green">
+                <div class="tc-icon">🧑‍💻</div>
+                <h4>Pretexting</h4>
+                <p>Fabricated scenarios used to establish false trust — posing as HR, IT, or contractors to extract data.</p>
+                <span class="severity sev-medium">Medium</span>
+            </div>
+        </div>
+
+        <!-- Email example -->
+        <div class="section-header" style="margin-top:2.5rem;">
+            <span class="tag">// live example</span>
+            <h2>Spot the Phishing Email</h2>
+            <p>Study this simulated phishing email and identify the red flags below.</p>
+        </div>
+        <div class="email-sim">
+            <div class="email-header-bar">
+                <span>📬 Inbox · 1 unread</span>
+                <span style="color:var(--danger);">⚠ Suspicious sender detected</span>
+            </div>
+            <div class="email-body">
+                <div class="email-meta">
+                    <div><span class="key">From: </span><span class="val" style="color:var(--warn);"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="0b786e687e79627f72266a676e797f784b7b6a727b6a3a26787e7b7b64797f25656e7f">[email&#160;protected]</a></span></div>
+                    <div><span class="key">To: </span><span class="val"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="344d5b41744d5b4146575b5944555a4d1a575b59">[email&#160;protected]</a></span></div>
+                    <div><span class="key">Subject: </span><span class="val">⚠ Urgent: Your account has been temporarily suspended</span></div>
+                    <div><span class="key">Date: </span><span class="val">Today, 02:17 AM</span></div>
+                </div>
+                <div class="email-content">
+                    Dear Valued Customer,
+
+                    We have detected <strong>unusual activity</strong> on your PayPal account. To avoid permanent suspension, you must verify your identity within <strong>24 hours</strong>.
+
+                    Click the link below to restore access immediately:
+
+                    <a>→ http://www.paypa1-secure-verify.ru/login?token=a93kd</a>
+
+                    If you do not act, your account will be <strong>permanently disabled</strong> and any pending funds will be held.
+
+                    Regards,
+                    PayPal Security Team
+                </div>
+                <div class="red-flags-title">🚩 Red flags identified</div>
+                <div class="red-flag"><span class="flag-num">#1</span> Spoofed domain — "paypa1" uses a number "1" instead of the letter "l" to mimic PayPal.</div>
+                <div class="red-flag"><span class="flag-num">#2</span> Sent at 2 AM from a .net address, not paypal.com — legitimate companies use their own domain.</div>
+                <div class="red-flag"><span class="flag-num">#3</span> Urgency and fear tactics — "24 hours", "permanently disabled" to prevent rational thinking.</div>
+                <div class="red-flag"><span class="flag-num">#4</span> Suspicious link with a .ru TLD and random token parameter — hover before you click.</div>
+                <div class="red-flag"><span class="flag-num">#5</span> Generic greeting "Dear Valued Customer" — your real bank knows your name.</div>
+            </div>
+        </div>
+
+        <!-- Quiz -->
+        <div class="section-header" style="margin-top:2.5rem;">
+            <span class="tag">// knowledge check</span>
+            <h2>Link Inspector Quiz</h2>
+            <p>Hover over the links inside each email to reveal where they actually lead — then decide: real or phishing?</p>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem;">
+            <div style="flex:1;height:4px;background:rgba(48,217,217,0.1);border-radius:2px;overflow:hidden;">
+                <div id="qprog-bar" style="height:100%;background:var(--accent);border-radius:2px;transition:width 0.4s;width:0%;"></div>
+            </div>
+            <span id="qprog-lbl" style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);white-space:nowrap;">0 / 5</span>
+        </div>
+
+        <div id="email-quiz-wrap"></div>
+
+        <div id="quiz-verdict" style="display:none;margin-top:1rem;border-radius:10px;padding:0.9rem 1.1rem;font-family:var(--mono);font-size:0.8rem;line-height:1.6;"></div>
+
+        <div style="display:flex;gap:10px;margin-top:1rem;flex-wrap:wrap;">
+            <button id="btn-real"    onclick="submitVerdict('real')"  style="display:none;padding:10px 28px;background:rgba(52,211,153,0.18);border:1px solid rgba(52,211,153,0.5);border-radius:8px;color:#6ee7b7;font-family:var(--mono);font-size:0.8rem;cursor:pointer;">&#10004; Legitimate</button>
+            <button id="btn-fake"    onclick="submitVerdict('fake')"  style="display:none;padding:10px 28px;background:rgba(248,113,113,0.18);border:1px solid rgba(248,113,113,0.5);border-radius:8px;color:#fca5a5;font-family:var(--mono);font-size:0.8rem;cursor:pointer;">&#10008; Phishing</button>
+            <button id="btn-qnext"   onclick="nextEmailQ()"            style="display:none;padding:10px 28px;background:var(--accent);border:none;border-radius:8px;color:#071829;font-family:var(--mono);font-size:0.8rem;font-weight:700;cursor:pointer;">Next email &rarr;</button>
+            <button id="btn-restart" onclick="restartQuiz()"           style="display:none;padding:10px 28px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--accent3);font-family:var(--mono);font-size:0.8rem;cursor:pointer;">&#8635; Restart</button>
+        </div>
+
+        <div id="quiz-summary" style="display:none;margin-top:1.5rem;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:1.5rem;text-align:center;">
+            <div style="font-family:var(--mono);font-size:0.72rem;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;">Quiz complete</div>
+            <div id="summary-score" style="font-size:2.5rem;font-weight:800;color:var(--accent2);font-family:var(--mono);"></div>
+            <div id="summary-msg"   style="font-family:var(--mono);font-size:0.8rem;color:var(--muted);margin-top:0.5rem;"></div>
+        </div>
+    </div>
+    <div class="footer">© 2025 Cyberguard Initiative · For educational use only</div>
+</div>
+
+<!-- ══════════════════ TIPS ══════════════════ -->
+<div class="page" id="page-tips">
+    <div class="section">
+        <div class="section-header">
+            <span class="tag">// best practices</span>
+            <h2>Security Best Practices</h2>
+            <p>Concrete, actionable steps to strengthen your personal and organisational security posture.</p>
+        </div>
+        <div class="tips-list">
+            <div class="tip-item"><div class="tip-num">01</div><div><h4>Use a Password Manager</h4><p>Never reuse passwords. A manager like Bitwarden or 1Password generates and stores unique credentials for every site — one master password secures them all.</p></div></div>
+            <div class="tip-item"><div class="tip-num">02</div><div><h4>Enable Multi-Factor Authentication (MFA)</h4><p>Add a TOTP app (Authy, Google Authenticator) or hardware key (YubiKey) to every critical account. Even if your password leaks, attackers can't log in.</p></div></div>
+            <div class="tip-item"><div class="tip-num">03</div><div><h4>Verify Before You Click</h4><p>Hover over links to preview the real URL. When in doubt, navigate directly to the website rather than following email links. Report suspicious messages to your IT team.</p></div></div>
+            <div class="tip-item"><div class="tip-num">04</div><div><h4>Keep Software Updated</h4><p>Enable automatic updates for OS, browser, and plugins. Most exploits target known vulnerabilities that patches already fixed — outdated software is low-hanging fruit for attackers.</p></div></div>
+            <div class="tip-item"><div class="tip-num">05</div><div><h4>Use a VPN on Public Wi-Fi</h4><p>Public hotspots are prime interception targets. A reputable VPN encrypts your traffic, preventing man-in-the-middle attacks on cafés, airports, and hotel networks.</p></div></div>
+            <div class="tip-item"><div class="tip-num">06</div><div><h4>Back Up with the 3-2-1 Rule</h4><p>Keep 3 copies of data, on 2 different media, with 1 offsite or cloud backup. This is your primary defence against ransomware and hardware failure.</p></div></div>
+            <div class="tip-item"><div class="tip-num">07</div><div><h4>Principle of Least Privilege</h4><p>Grant users and applications only the permissions they strictly need. Admin accounts should only be used for administrative tasks — use a standard account day-to-day.</p></div></div>
+            <div class="tip-item"><div class="tip-num">08</div><div><h4>Monitor for Data Breaches</h4><p>Register at HaveIBeenPwned.com to receive alerts if your email or passwords appear in known breach databases — then change affected credentials immediately.</p></div></div>
+        </div>
+    </div>
+    <div class="footer">© 2025 Cyberguard Initiative · For educational use only</div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+    // ── Page navigation ──
+    function showPage(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('visible'));
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('page-'+id).classList.add('visible');
+        document.getElementById('nav-'+id).classList.add('active');
+        window.scrollTo(0,0);
+    }
+
+    // ── Strength meter (Password Lab page) ──
+    function updateStrength() {
+        const pw = document.getElementById('pw-input').value;
+        const bar = document.getElementById('strength-bar');
+        const lbl = document.getElementById('strength-label');
+        let score = 0;
+        if(pw.length>=8) score++;
+        if(pw.length>=12) score++;
+        if(/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+        if(/[0-9]/.test(pw)) score++;
+        if(/[^A-Za-z0-9]/.test(pw)) score++;
+        const levels = [
+            {pct:'8%', color:'#ef4444', label:'Very weak'},
+            {pct:'25%', color:'#f97316', label:'Weak'},
+            {pct:'50%', color:'#eab308', label:'Fair'},
+            {pct:'75%', color:'#22c55e', label:'Strong'},
+            {pct:'100%', color:'#30D9D9', label:'Very strong'},
+        ];
+        const l = pw.length===0 ? null : levels[Math.min(score,4)];
+        bar.style.width = l ? l.pct : '0%';
+        bar.style.background = l ? l.color : '';
+        lbl.style.color = l ? l.color : 'var(--muted)';
+        lbl.textContent = l ? l.label : '';
+    }
+
+    // ── Send crack request (Password Lab page) ──
+    async function sendCrackRequest() {
+        const pw = document.getElementById('pw-input').value.trim();
+        const url = document.getElementById('api-url').value.trim();
+        const method = document.getElementById('attack-method').value;
+        const hash = document.getElementById('hash-type').value;
+        const out = document.getElementById('output-box');
+        const stats = document.getElementById('result-stats');
+        const wrap = document.getElementById('progress-wrap');
+        const status = document.getElementById('crack-status');
+
+        if(!pw){ out.textContent='// Error: please enter a password.'; return; }
+
+        out.textContent='';
+        stats.style.display='none';
+        wrap.style.display='flex';
+
+        const msgs = ['Connecting to backend endpoint...','Sending payload...','Waiting for response...'];
+        let mi=0;
+        const iv = setInterval(()=>{ status.textContent = msgs[mi++ % msgs.length]; }, 900);
+
+        const body = { password: pw, method, hash_type: hash };
+
+        try {
+            if(!url) throw new Error('No endpoint configured — please enter your backend URL.');
+            const resp = await fetch(url, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify(body)
+            });
+            clearInterval(iv); wrap.style.display='none';
+            const data = await resp.json();
+            out.textContent = '// POST ' + url + '\n// Status: ' + resp.status + ' ' + resp.statusText + '\n\n' + JSON.stringify(data, null, 2);
+            if(data.entropy_bits !== undefined) document.getElementById('stat-entropy').textContent = data.entropy_bits.toFixed(1)+' bits';
+            if(data.estimated_crack_time) document.getElementById('stat-time').textContent = data.estimated_crack_time;
+            if(data.score !== undefined) document.getElementById('stat-score').textContent = data.score+'/4';
+            if(data.cracked !== undefined){
+                const el = document.getElementById('stat-status');
+                el.textContent = data.cracked ? 'CRACKED' : 'SECURE';
+                el.style.color = data.cracked ? 'var(--danger)' : 'var(--success)';
+            }
+            stats.style.display='block';
+        } catch(e) {
+            clearInterval(iv); wrap.style.display='none';
+            out.textContent = '// Request failed\n// ' + e.message + '\n\n// Payload attempted:\n' + JSON.stringify(body,null,2);
+        }
+    }
+
+    function clearResults(){
+        document.getElementById('output-box').textContent='// Results will appear here after submitting to your backend.';
+        document.getElementById('result-stats').style.display='none';
+        document.getElementById('pw-input').value='';
+        document.getElementById('strength-bar').style.width='0%';
+        document.getElementById('strength-label').textContent='';
+    }
+
+    // ── Home password widget ──
+    function homeStrength() {
+        const pw = document.getElementById('home-pw-input').value;
+        const bar = document.getElementById('home-bar');
+        const lbl = document.getElementById('home-strength-lbl');
+        const ent = document.getElementById('home-entropy-lbl');
+        let score = 0;
+        if(pw.length>=8) score++;
+        if(pw.length>=12) score++;
+        if(/[A-Z]/.test(pw)&&/[a-z]/.test(pw)) score++;
+        if(/[0-9]/.test(pw)) score++;
+        if(/[^A-Za-z0-9]/.test(pw)) score++;
+        const levels=[
+            {pct:'8%',color:'#ef4444',label:'Very weak'},
+            {pct:'25%',color:'#f97316',label:'Weak'},
+            {pct:'50%',color:'#eab308',label:'Fair'},
+            {pct:'75%',color:'#22c55e',label:'Strong'},
+            {pct:'100%',color:'#30D9D9',label:'Very strong'}
+        ];
+        const l = pw.length===0 ? null : levels[Math.min(score,4)];
+        bar.style.width = l ? l.pct : '0%';
+        bar.style.background = l ? l.color : '';
+        lbl.style.color = l ? l.color : 'var(--muted)';
+        lbl.textContent = l ? l.label : '';
+        let pool=0;
+        if(/[a-z]/.test(pw)) pool+=26;
+        if(/[A-Z]/.test(pw)) pool+=26;
+        if(/[0-9]/.test(pw)) pool+=10;
+        if(/[^A-Za-z0-9]/.test(pw)) pool+=32;
+        const bits = pw.length>0&&pool>0 ? (pw.length * Math.log2(pool)).toFixed(1)+' bits' : '';
+        ent.textContent = bits;
+    }
+
+    async function homeSend() {
+        const pw = document.getElementById('home-pw-input').value.trim();
+        const result = document.getElementById('home-result');
+        const statsEl = document.getElementById('home-stats');
+        if(!pw){ result.style.display='block'; result.textContent='// Please enter a password first.'; statsEl.style.display='none'; return; }
+        const urlEl = document.getElementById('api-url');
+        const url = urlEl ? urlEl.value.trim() : '';
+        result.style.display='block'; result.textContent='// Sending...'; statsEl.style.display='none';
+        if(!url){
+            result.textContent='// No backend endpoint configured.\n// Go to Password Lab to set your endpoint URL.\n\n// Payload that would be sent:\n'+JSON.stringify({password:pw,method:'bruteforce',hash_type:'plaintext'},null,2);
+            return;
+        }
+        try {
+            const resp = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,method:'bruteforce',hash_type:'plaintext'})});
+            const data = await resp.json();
+            result.textContent='// '+resp.status+' '+resp.statusText+'\n'+JSON.stringify(data,null,2);
+            if(data.entropy_bits!==undefined) document.getElementById('hs-entropy').textContent=data.entropy_bits.toFixed(1)+' bits';
+            if(data.estimated_crack_time) document.getElementById('hs-time').textContent=data.estimated_crack_time;
+            if(data.cracked!==undefined){
+                const s=document.getElementById('hs-status');
+                s.textContent=data.cracked?'CRACKED':'SECURE';
+                s.style.color=data.cracked?'var(--danger)':'var(--success)';
+            }
+            statsEl.style.display='grid';
+        } catch(e){
+            result.textContent='// Error: '+e.message+'\n// Configure your backend URL in Password Lab first.';
+        }
+    }
+
+    // ── Email Link Inspector Quiz ──
+    const emailQuestions = [
+        {
+            type: 'phishing',
+            from_display: 'PayPal Security &lt;security@paypa1-support.net&gt;',
+            from_real: 'security@paypa1-support.net',
+            to: 'you@company.com',
+            subject: 'Urgent: Your account will be suspended',
+            date: 'Today, 02:17 AM',
+            body: [
+                { t: 'text', v: 'Dear Valued Customer,\n\nWe have detected ' },
+                { t: 'text', v: 'unusual activity', bold: true },
+                { t: 'text', v: ' on your PayPal account. To avoid permanent suspension verify your identity within 24 hours.\n\n' },
+                { t: 'link', display: 'Verify My Account Now', real: 'http://paypa1-secure-verify.ru/login?token=a93k' },
+                { t: 'text', v: '\n\nRegards,\nPayPal Security Team' }
+            ],
+            answer: 'fake',
+            fromDanger: true,
+            explain: 'Phishing — "paypa1" uses the digit 1 not the letter l. The sender is .net not paypal.com, the link leads to a .ru domain. Generic greeting and 2 AM timestamp are red flags.'
+        },
+        {
+            type: 'real',
+            from_display: 'GitHub &lt;noreply@github.com&gt;',
+            from_real: 'noreply@github.com',
+            to: 'you@company.com',
+            subject: 'Please verify your email address',
+            date: 'Today, 10:04 AM',
+            body: [
+                { t: 'text', v: 'Hi there,\n\nPlease verify your email address to finish setting up your GitHub account.\n\n' },
+                { t: 'link', display: 'Verify email address', real: 'https://github.com/users/email/verify?token=xyz123' },
+                { t: 'text', v: '\n\nThis link expires in 24 hours.\n\nThanks,\nThe GitHub Team' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is noreply@github.com (real GitHub domain). Link goes to github.com. No urgency tricks, no spoofed characters.'
+        },
+        {
+            type: 'phishing',
+            from_display: 'IT Support &lt;it-helpdesk@company-portal-login.com&gt;',
+            from_real: 'it-helpdesk@company-portal-login.com',
+            to: 'you@company.com',
+            subject: 'Action Required: Reset Your Password Immediately',
+            date: 'Yesterday, 11:58 PM',
+            body: [
+                { t: 'text', v: 'Hi Employee,\n\nYour company password expires in ' },
+                { t: 'text', v: '2 hours', bold: true },
+                { t: 'text', v: '. Failure to reset will lock you out of all systems.\n\n' },
+                { t: 'link', display: 'Reset Password', real: 'http://company-portal-login.com/reset?id=8823&ref=urgent' },
+                { t: 'text', v: '\n\nIT Helpdesk' }
+            ],
+            answer: 'fake',
+            fromDanger: true,
+            explain: 'Phishing — "company-portal-login.com" is a lookalike domain, not your real employer. Extreme urgency, sent near midnight, and a generic "Hi Employee" greeting.'
+        },
+        {
+            type: 'real',
+            from_display: 'Netflix &lt;info@account.netflix.com&gt;',
+            from_real: 'info@account.netflix.com',
+            to: 'you@company.com',
+            subject: 'Your Netflix receipt - March 2025',
+            date: '1 Apr, 09:00 AM',
+            body: [
+                { t: 'text', v: 'Hi Jane,\n\nYour monthly subscription has been renewed.\n\nPlan: Standard — €13.99\nDate: 1 April 2025\n\nTo manage your account:\n\n' },
+                { t: 'link', display: 'Manage Membership', real: 'https://www.netflix.com/account' },
+                { t: 'text', v: '\n\nThank you,\nNetflix' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is @account.netflix.com (a real Netflix subdomain). Link goes directly to netflix.com/account. Addressed by name, no urgency.'
+        },
+        {
+            type: 'phishing',
+            from_display: 'Microsoft Account &lt;verify@micros0ft-account.info&gt;',
+            from_real: 'verify@micros0ft-account.info',
+            to: 'you@company.com',
+            subject: 'Suspicious sign-in detected — act now',
+            date: 'Today, 03:41 AM',
+            body: [
+                { t: 'text', v: 'We detected a sign-in to your Microsoft account from an unknown location.\n\nIf this was not you, secure your account immediately:\n\n' },
+                { t: 'link', display: 'Secure My Account', real: 'http://micros0ft-account.info/secure?session=abc99' },
+                { t: 'text', v: '\n\nYou have 30 minutes before your account is locked.\n\nMicrosoft Security Team' }
+            ],
+            answer: 'fake',
+            fromDanger: true,
+            explain: 'Phishing — "micros0ft" uses a zero instead of the letter o. Domain is .info not microsoft.com. Sent at 3 AM with a 30-minute ultimatum to trigger panic.'
+        }
+        ,
+        {
+            type: 'phishing',
+            from_display: 'Google &lt;accounts@google.com&gt;',
+            from_real: 'accounts@google.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Urgent: new sign-in from Chrome on Windows',
+            date: 'March 30, 2026, 09:14 AM',
+            body: [
+                { t: 'text', v: 'Hi CyberGuard,\n\nYour Google account was just used to sign in from a new device.\n\nDevice: Chrome on Windows\nLocation: Brussels, Belgium\nTime: March 30, 2026, 09:14 AM\n\nIf this was you, no action is needed. If this was not you, check your account at:\n\n' },
+                { t: 'link', display: 'https://safety.google.safety/', real: 'https://safety.google-safety/' }
+            ],
+            answer: 'fake',
+            fromDanger: true,
+            explain: 'Phishing — two red flags: (1) Sender is accounts@google.com, not the real no-reply@accounts.google.com. (2) The link leads to google-safety — a fake lookalike domain — not safety.google/safety/. Real Google alerts never come from a generic @google.com address.'
+        },
+        {
+            type: 'real',
+            from_display: 'Google &lt;no-reply@accounts.google.com&gt;',
+            from_real: 'no-reply@accounts.google.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Security alert: new sign-in from Chrome on Windows',
+            date: 'March 30, 2026, 09:14 AM',
+            body: [
+                { t: 'text', v: 'Hi CyberGuard,\n\nYour Google account was just used to sign in from a new device.\n\nDevice: Chrome on Windows\nLocation: Brussels, Belgium\nTime: March 30, 2026, 09:14 AM\n\nIf this was you, no action is needed. If this was not you, check your account at:\n\n' },
+                { t: 'link', display: 'https://safety.google/safety/', real: 'https://safety.google/safety/' },
+                { t: 'text', v: '\n\nGoogle LLC — 1600 Amphitheatre Parkway, Mountain View, CA 94043' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is no-reply@accounts.google.com (genuine Google subdomain). The link goes to safety.google/safety/ — the real Google domain. The official postal address in the footer is a hallmark of authentic Google security emails.'
+        }
+        ,
+        {
+            type: 'phishing',
+            from_display: 'Netflix &lt;reply@netflix-support.com&gt;',
+            from_real: 'reply@netflix-support.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Update to your Netflix membership',
+            date: 'April 3, 2026, 11:22 AM',
+            body: [
+                { t: 'text', v: 'Hi CyberGuard,\n\nWe are updating our pricing. Starting May 1, 2026, your Standard plan will change from €13.99 to €15.49 per month.\n\nYour next billing date is April 14, 2026. The new rate applies from the billing cycle after that. If you would like to change or cancel your plan, visit:\n\n' },
+                { t: 'link', display: 'netfIix.com/account', real: 'http://www.flix-net.com/account' },
+                { t: 'text', v: '\n\nNetflix, Inc. — 100 Winchester Circle, Los Gatos, CA 95032' }
+            ],
+            answer: 'fake',
+            fromDanger: true,
+            explain: 'Phishing — two red flags: (1) Sender is reply@netflix-support.com, not netflix.com. (2) The link display shows "netfIix.com" using a capital letter I instead of a lowercase l — and the real destination is flix-net.com, a completely fake domain.'
+        },
+        {
+            type: 'phishing',
+            from_display: 'Spotify &lt;noreply@spotify.com&gt;',
+            from_real: 'noreply@spotify.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Receipt for your Spotify Premium subscription',
+            date: 'March 30, 2026, 08:15 AM',
+            body: [
+                { t: 'text', v: 'Hi CyberGuard,\n\nThanks for your Spotify Premium subscription.\n\nPlan: Individual\nAmount: €10.99\nBilling date: March 30, 2026\nPayment method: Visa ending in 4821\n\nYour next billing date is April 30, 2026.\n\nManage your subscription at:\n\n' },
+                { t: 'link', display: 'spotify.com/account', real: 'http://www.xn--spotfy-eua.com/account' },
+                { t: 'text', v: '\n\nSpotify AB — Regeringsgatan 19, SE-111 53 Stockholm, Sweden' }
+            ],
+            answer: 'fake',
+            fromDanger: false,
+            explain: 'Phishing — the sender looks real but hover reveals the link uses a Cyrillic homoglyph: the "i" in spotify is actually the Cyrillic letter "і" (U+0456), making it a different domain entirely. This is a punycode homoglyph attack — one of the hardest to spot visually.'
+        },
+        {
+            type: 'real',
+            from_display: 'Spotify &lt;no-reply@spotify.com&gt;',
+            from_real: 'no-reply@spotify.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Receipt for your Spotify Premium subscription',
+            date: 'March 30, 2026, 08:15 AM',
+            body: [
+                { t: 'text', v: 'Hi CyberGuard,\n\nThanks for your Spotify Premium subscription.\n\nPlan: Individual\nAmount: €10.99\nBilling date: March 30, 2026\nPayment method: Visa ending in 4821\n\nYour next billing date is April 30, 2026.\n\nManage your subscription at:\n\n' },
+                { t: 'link', display: 'spotify.com/account', real: 'http://www.spotify.com/account' },
+                { t: 'text', v: '\n\nSpotify AB — Regeringsgatan 19, SE-111 53 Stockholm, Sweden' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is no-reply@spotify.com and the link goes directly to spotify.com/account. Official address in footer. Compare the real link here to the homoglyph attack in the phishing version.'
+        },
+        {
+            type: 'real',
+            from_display: 'PayPal &lt;service@paypal.com&gt;',
+            from_real: 'service@paypal.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'You sent a payment of €149.99',
+            date: 'March 30, 2026, 02:44 PM',
+            body: [
+                { t: 'text', v: 'Hello CyberGuard,\n\nYou sent a payment of €149.99 to TechShop BV.\n\nTransaction ID: 7GH29301KS884732A\nDate: March 30, 2026\nPayment method: Visa ending in 4821\n\nIf you did not authorize this transaction, contact us through the Resolution Center on:\n\n' },
+                { t: 'link', display: 'www.paypal.com', real: 'https://www.paypal.com' },
+                { t: 'text', v: '\n\nThanks for using PayPal.' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is service@paypal.com (the real PayPal domain). The link goes to paypal.com. No urgency tricks, transaction ID is included, and users are directed to the Resolution Center — standard PayPal communication.'
+        },
+        {
+            type: 'phishing',
+            from_display: 'Microsoft &lt;account-security-noreply@rnicrosoft.com&gt;',
+            from_real: 'account-security-noreply@rnicrosoft.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Your Microsoft account password was changed',
+            date: 'Today, 04:12 AM',
+            body: [
+                { t: 'text', v: 'Dear CyberGuard,\n\nWe noticed that the password for your Microsoft account (cyberguardinitiative@example.com) was recently changed.\n\nIf you made this change, you can safely ignore this message.\n\nIf you did not change your password, please secure your account at:\n\n' },
+                { t: 'link', display: 'https://account.rnicrosoft.com', real: 'https://account.rnicrosoft.com' },
+                { t: 'text', v: '\n\nFor your protection, we have signed you out of all devices.\n\nThanks, The Microsoft account team' }
+            ],
+            answer: 'fake',
+            fromDanger: true,
+            explain: 'Phishing — "rnicrosoft" substitutes "rn" for the letter "m". Both the sender domain and the link destination use this fake domain. Sent at 4 AM, and the password-change framing is designed to create panic and provoke a click.'
+        },
+        {
+            type: 'phishing',
+            from_display: 'LinkedIn &lt;messages-noreply@linkedin.com&gt;',
+            from_real: 'messages-noreply@linkedin.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'You have 3 new connection requests',
+            date: 'Today, 09:05 AM',
+            body: [
+                { t: 'text', v: 'Hi CyberGuard,\n\nYou have 3 new people who want to connect with you on LinkedIn.\n\n• Sarah Janssen — Product Manager at KPMG Belgium\n• David Ortega — Software Engineer at Proximus\n• Nadia Wouters — HR Director at Deloitte\n\nReview your invitations at:\n\n' },
+                { t: 'link', display: 'www.linkedin.com/mynetwork', real: 'http://www.linkedin.com/mynetwork/invitation-manager' },
+                { t: 'text', v: '\n\nThe LinkedIn Team — 1000 West Maude Ave, Sunnyvale, CA 94085\n\n' },
+                { t: 'link', display: 'Unsubscribe from these emails', real: 'http://www.lnkd-mailer.com/unsub?id=alex&confirm=1' }
+            ],
+            answer: 'fake',
+            fromDanger: false,
+            explain: 'Phishing — the main link looks fine, but hover the Unsubscribe link: it leads to lnkd-mailer.com — a fake domain unrelated to LinkedIn. Attackers bury malicious links in footers knowing users trust the main content.'
+        },
+        {
+            type: 'phishing',
+            from_display: 'ING &lt;noreply@ing.be&gt;',
+            from_real: 'noreply@ing.be',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Action required: Verify your ING account',
+            date: 'Today, 08:50 AM',
+            body: [
+                { t: 'text', v: 'Dear CyberGuard,\n\nAs part of our ongoing security improvements, we ask all customers to re-verify their account details once per year.\n\nPlease verify your account via the secure link below:\n\n' },
+                { t: 'link', display: 'https://ing.be/security', real: 'https://ing-be-security.com/' },
+                { t: 'text', v: '\n\nThis process takes less than 2 minutes. If you have already completed this step, you may ignore this email.\n\nING Belgium SA/NV — Avenue Marnix 24, B-1000 Brussels' }
+            ],
+            answer: 'fake',
+            fromDanger: false,
+            explain: 'Phishing — the sender and display text look real, but hover reveals the link goes to "ing-be-security.com" — a lookalike domain with no connection to ING. The real ING would link to ing.be/security. This is display-text spoofing: the link text says one thing, the destination is another.'
+        },
+        {
+            type: 'real',
+            from_display: 'ING &lt;noreply@ing.be&gt;',
+            from_real: 'noreply@ing.be',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Action required: Verify your ING account',
+            date: 'Today, 08:50 AM',
+            body: [
+                { t: 'text', v: 'Dear CyberGuard,\n\nAs part of our ongoing security improvements, we ask all customers to re-verify their account details once per year.\n\nPlease verify your account via the secure link below:\n\n' },
+                { t: 'link', display: 'https://ing.be/security', real: 'https://ing.be/security' },
+                { t: 'text', v: '\n\nThis process takes less than 2 minutes. If you have already completed this step, you may ignore this email.\n\nING Belgium SA/NV — Avenue Marnix 24, B-1000 Brussels' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — identical layout to the phishing version, but hover confirms the link truly goes to ing.be/security. The sender, display text, and destination all match. This pair shows why hovering links matters even when everything else looks normal.'
+        },
+        {
+            type: 'real',
+            from_display: 'DHL &lt;noreply@dhl.com&gt;',
+            from_real: 'noreply@dhl.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'DHL Shipment Notification — 1Z999AA10123456784',
+            date: 'March 31, 2026, 07:30 AM',
+            body: [
+                { t: 'text', v: 'Dear CyberGuard,\n\nYour shipment is on its way.\n\nTracking number: 1Z999AA10123456784\nSender: TechShop BV\nEstimated delivery: April 2, 2026\n\nTrack your shipment at:\n\n' },
+                { t: 'link', display: 'dhl.com/tracking', real: 'https://www.dhl.com/tracking' },
+                { t: 'text', v: '\n\nDHL Express — Deutsche Post DHL Group' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is noreply@dhl.com and the link goes directly to dhl.com/tracking. No urgency, no suspicious parameters, tracking number provided upfront. This is what a real parcel notification looks like.'
+        },
+        {
+            type: 'phishing',
+            from_display: 'Amazon &lt;amazon-shipment-tracking@amazon.com&gt;',
+            from_real: 'amazon-shipment-tracking@amazon.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Your Amazon order has shipped',
+            date: 'Today, 06:58 AM',
+            body: [
+                { t: 'text', v: 'Hello CyberGuard,\n\nYour order #112-3849201-8372946 has shipped.\n\nPlease confirm your delivery address to avoid delays:\n\n' },
+                { t: 'link', display: 'http://www.amazon.com/orders', real: 'http://www.amasun.com/orders' },
+                { t: 'text', v: '\n\nItem: Sony WH-1000XM5 Headphones\nCarrier: DHL Express\nEstimated delivery: April 1, 2026\n\nThank you for shopping with Amazon.' }
+            ],
+            answer: 'fake',
+            fromDanger: true,
+            explain: 'Phishing — the sender uses amazon-shipment-tracking@amazon.com (Amazon uses ship-confirm@amazon.com) and the link leads to "amasun.com" — not amazon.com. The urgency to "confirm your delivery address" is a social engineering hook to get you to click and enter credentials.'
+        },
+        {
+            type: 'real',
+            from_display: 'Apple &lt;no-reply@email.apple.com&gt;',
+            from_real: 'no-reply@email.apple.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Your Apple ID was used to sign in to iCloud',
+            date: 'March 30, 2026, 10:02 AM',
+            body: [
+                { t: 'text', v: 'Dear CyberGuard,\n\nYour Apple ID (cyberguardinitiative@example.com) was used to sign in to iCloud via a web browser.\n\nDate and Time: March 30, 2026, 10:02 AM CET\nBrowser: Safari\nLocation: Brussels, Belgium\n\nIf you did not sign in, change your Apple ID password at:\n\n' },
+                { t: 'link', display: 'account.apple.com', real: 'https://account.apple.com/' },
+                { t: 'text', v: '\n\nApple Inc. — One Apple Park Way, Cupertino, California 95014' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is no-reply@email.apple.com (a genuine Apple subdomain used for notifications). The link goes to account.apple.com. Personalised with your Apple ID email, specific sign-in details, and Apple official address in the footer.'
+        },
+        {
+            type: 'real',
+            from_display: 'Microsoft &lt;account-security-noreply@microsoft.com&gt;',
+            from_real: 'account-security-noreply@microsoft.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Your Microsoft account password was changed',
+            date: 'Today, 09:30 AM',
+            body: [
+                { t: 'text', v: 'Hi CyberGuard,\\n\\nWe noticed that the password for your Microsoft account (cyberguardinitiative@example.com) was recently changed.\\n\\nIf you made this change, you can safely ignore this message.\\n\\nIf you did not change your password, please secure your account at:\\n\\n' },
+                { t: 'link', display: 'https://account.microsoft.com', real: 'https://account.microsoft.com' },
+                { t: 'text', v: '\\n\\nFor your protection, we have signed you out of all devices.\\n\\nThanks, The Microsoft account team\\n\\nMicrosoft Corporation — One Microsoft Way, Redmond, WA 98052' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is account-security-noreply@microsoft.com (genuine domain, not rnicrosoft). Link goes to account.microsoft.com. Includes official address. Compare the sender carefully against the phishing version which uses rn instead of m.'
+        },
+        {
+            type: 'real',
+            from_display: 'Amazon &lt;shipment-tracking@amazon.com&gt;',
+            from_real: 'shipment-tracking@amazon.com',
+            to: 'cyberguardinitiative@example.com',
+            subject: 'Your Amazon order has shipped',
+            date: 'Today, 07:14 AM',
+            body: [
+                { t: 'text', v: 'Hello CyberGuard,\\n\\nGood news — your order #112-3849201-8372946 has shipped.\\n\\nItem: Sony WH-1000XM5 Headphones\\nCarrier: DHL Express\\nEstimated delivery: April 1, 2026\\n\\nTrack your package at:\\n\\n' },
+                { t: 'link', display: 'www.amazon.com/orders', real: 'http://www.amazon.com/orders' },
+                { t: 'text', v: '\\n\\nThank you for shopping with Amazon.' }
+            ],
+            answer: 'real',
+            fromDanger: false,
+            explain: 'Legitimate — sender is shipment-tracking@amazon.com (real Amazon domain). Link goes to amazon.com/orders. No pressure to confirm your address — just tracking info. Compare to the phishing version where the link quietly leads to amasun.com.'
+        }
+    ];
+
+    let eqIdx = 0;
+    let eqScore = 0;
+    let eqAnswered = false;
+
+    function renderEmailQ() {
+        const q = emailQuestions[eqIdx];
+        const wrap = document.getElementById('email-quiz-wrap');
+        const pct = (eqIdx / emailQuestions.length * 100).toFixed(0);
+        document.getElementById('qprog-bar').style.width = pct + '%';
+        document.getElementById('qprog-lbl').textContent = eqIdx + ' / ' + emailQuestions.length;
+
+        const fromColor = q.fromDanger ? 'var(--warn)' : 'var(--success)';
+
+        let bodyHTML = '';
+        q.body.forEach(function(part) {
+            if (part.t === 'text') {
+                let txt = part.v.replace(/\n/g, '<br>');
+                if (part.bold) txt = '<strong>' + txt + '</strong>';
+                bodyHTML += txt;
+            } else if (part.t === 'link') {
+                bodyHTML += '<span class="quiz-link" data-real="' + part.real + '" onmouseenter="showLinkTip(this)" onmouseleave="hideLinkTip(this)">'
+                    + part.display
+                    + '<span class="link-tooltip"></span></span>';
+            }
+        });
+
+        wrap.innerHTML =
+            '<div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;">'
+            + '<div style="background:rgba(3,10,20,0.75);padding:0.8rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">'
+            + '<span style="font-family:var(--mono);font-size:0.75rem;color:var(--muted);">&#128236; Inbox &nbsp;&middot;&nbsp; Email ' + (eqIdx+1) + ' of ' + emailQuestions.length + '</span>'
+            + '<span style="font-family:var(--mono);font-size:0.7rem;color:var(--accent2);">Hover the link &mdash; then judge below</span>'
+            + '</div>'
+            + '<div style="padding:1.4rem 1.5rem;">'
+            + '<table style="width:100%;border-collapse:collapse;margin-bottom:1rem;">'
+            + '<tr><td style="font-family:var(--mono);font-size:0.76rem;color:var(--muted);padding:4px 0;width:64px;vertical-align:top;">From</td><td style="font-family:var(--mono);font-size:0.76rem;color:' + fromColor + ';padding:4px 0;">' + q.from_display + '</td></tr>'
+            + '<tr><td style="font-family:var(--mono);font-size:0.76rem;color:var(--muted);padding:4px 0;">To</td><td style="font-family:var(--mono);font-size:0.76rem;color:var(--text);padding:4px 0;">' + q.to + '</td></tr>'
+            + '<tr><td style="font-family:var(--mono);font-size:0.76rem;color:var(--muted);padding:4px 0;vertical-align:top;">Subject</td><td style="font-family:var(--mono);font-size:0.76rem;color:var(--text);padding:4px 0;font-weight:700;">' + q.subject + '</td></tr>'
+            + '<tr><td style="font-family:var(--mono);font-size:0.76rem;color:var(--muted);padding:4px 0;">Date</td><td style="font-family:var(--mono);font-size:0.76rem;color:var(--muted);padding:4px 0;">' + q.date + '</td></tr>'
+            + '</table>'
+            + '<div style="background:rgba(3,10,20,0.55);border:1px solid var(--border);border-radius:8px;padding:1rem 1.1rem;font-family:var(--mono);font-size:0.8rem;line-height:1.85;color:var(--text);">'
+            + bodyHTML
+            + '</div>'
+            + '</div>'
+            + '</div>';
+
+        document.getElementById('quiz-verdict').style.display = 'none';
+        document.getElementById('btn-real').style.display = 'inline-block';
+        document.getElementById('btn-fake').style.display = 'inline-block';
+        document.getElementById('btn-real').disabled = false;
+        document.getElementById('btn-fake').disabled = false;
+        document.getElementById('btn-qnext').style.display = 'none';
+        document.getElementById('btn-restart').style.display = 'none';
+        document.getElementById('quiz-summary').style.display = 'none';
+        eqAnswered = false;
+    }
+
+    function showLinkTip(el) {
+        var tip = el.querySelector('.link-tooltip');
+        tip.textContent = el.getAttribute('data-real');
+        tip.style.display = 'block';
+    }
+
+    function hideLinkTip(el) {
+        var tip = el.querySelector('.link-tooltip');
+        tip.style.display = 'none';
+    }
+
+    function submitVerdict(verdict) {
+        if (eqAnswered) return;
+        eqAnswered = true;
+        const q = emailQuestions[eqIdx];
+        const correct = verdict === q.answer;
+        if (correct) eqScore++;
+
+        const vEl = document.getElementById('quiz-verdict');
+        vEl.style.display = 'block';
+        if (correct) {
+            vEl.style.background = 'rgba(34,197,94,0.1)';
+            vEl.style.border = '1px solid rgba(34,197,94,0.3)';
+            vEl.style.color = '#86efac';
+            vEl.textContent = 'Correct!  ' + q.explain;
+        } else {
+            vEl.style.background = 'rgba(239,68,68,0.1)';
+            vEl.style.border = '1px solid rgba(239,68,68,0.3)';
+            vEl.style.color = '#fca5a5';
+            vEl.textContent = 'Incorrect.  ' + q.explain;
+        }
+
+        document.getElementById('btn-real').disabled = true;
+        document.getElementById('btn-fake').disabled = true;
+
+        if (eqIdx < emailQuestions.length - 1) {
+            document.getElementById('btn-qnext').style.display = 'inline-block';
+        } else {
+            showSummary();
+        }
+    }
+
+    function nextEmailQ() {
+        eqIdx++;
+        document.getElementById('btn-qnext').style.display = 'none';
+        renderEmailQ();
+    }
+
+    function showSummary() {
+        const total = emailQuestions.length;
+        document.getElementById('btn-real').style.display = 'none';
+        document.getElementById('btn-fake').style.display = 'none';
+        document.getElementById('btn-qnext').style.display = 'none';
+        document.getElementById('btn-restart').style.display = 'inline-block';
+        document.getElementById('quiz-summary').style.display = 'block';
+        document.getElementById('summary-score').textContent = eqScore + ' / ' + total;
+        document.getElementById('qprog-bar').style.width = '100%';
+        document.getElementById('qprog-lbl').textContent = total + ' / ' + total;
+        const total2 = emailQuestions.length;
+        let grade;
+        const pct = eqScore / total2;
+        if (pct === 1)          grade = 'Perfect score! You are a phishing detection expert.';
+        else if (pct >= 0.89)   grade = 'Outstanding — only one slipped through!';
+        else if (pct >= 0.78)   grade = 'Great work! You caught most of them.';
+        else if (pct >= 0.67)   grade = 'Good eye — a few lookalikes fooled you.';
+        else if (pct >= 0.50)   grade = 'Getting there — keep hovering those links!';
+        else                    grade = 'Keep practicing — always hover before you click!';
+        document.getElementById('summary-msg').textContent = grade;
+    }
+
+    function restartQuiz() {
+        eqIdx = 0;
+        eqScore = 0;
+        eqAnswered = false;
+        document.getElementById('btn-restart').style.display = 'none';
+        document.getElementById('quiz-summary').style.display = 'none';
+        renderEmailQ();
+    }
+
+    renderEmailQ();
+</script>
+</body>
+</html>
